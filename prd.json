@@ -238,7 +238,7 @@
         "Unit and component tests cover schema validation, ordering, rendering, and graph linking"
       ],
       "priority": 15,
-      "passes": false,
+      "passes": true,
       "notes": "Define the protocol independently of terminal-text parsing so agents can emit semantic events later. Persistent session history is out of scope for this story."
     },
     {

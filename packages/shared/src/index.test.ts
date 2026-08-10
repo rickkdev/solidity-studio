@@ -4,9 +4,24 @@ import {
   createStableNodeId,
   GraphValidationError,
   parseGraph,
+  parseWorkEvent,
   serializeGraph,
   type Graph,
 } from "./index.js";
+
+describe("work event model", () => {
+  const event = { schemaVersion: 1, id: "event-1", type: "file_edit_completed", timestamp: "2026-08-10T16:00:00.000Z", message: "Updated Vault.sol", targetIds: ["file"], metadata: { path: "src/Vault.sol" } };
+
+  it("validates every semantic event type", () => {
+    const types = ["plan_created", "step_started", "file_read", "file_edit_started", "file_edit_completed", "command_started", "test_passed", "test_failed", "finding_created", "work_completed"];
+    types.forEach((type) => expect(parseWorkEvent({ ...event, id: type, type })).toMatchObject({ type }));
+  });
+
+  it("rejects malformed events with actionable fields", () => {
+    expect(() => parseWorkEvent({ ...event, type: "noise", timestamp: "later", targetIds: ["file", "file"] }))
+      .toThrowError(/type must be one of:[\s\S]*timestamp must be a valid[\s\S]*duplicates id 'file'/);
+  });
+});
 
 const validGraph: Graph = {
   schemaVersion: 1,

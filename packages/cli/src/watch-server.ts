@@ -3,7 +3,7 @@ import { access, readFile, stat } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createStableNodeId, parseGraph, serializeGraph, type Graph, type GraphNodeStatus } from "@codevis/shared";
+import { createStableNodeId, parseGraph, parseWorkEvent, serializeGraph, type Graph, type GraphNodeStatus, type WorkEvent, type WorkEventType } from "@codevis/shared";
 import { watch, type FSWatcher } from "chokidar";
 import { analyzeSolidityStructure, type SolidityDiagnostic } from "./analyze-solidity-structure.js";
 
@@ -55,10 +55,27 @@ export async function startWatchServer(
   if (errors.length > 0) throw new WatchAnalysisError(errors);
 
   let graph = await graphFromAnalysis(projectPath, analysis);
+  const workEvents: WorkEvent[] = [];
+  let eventSequence = 0;
+  const addEvent = (type: WorkEventType, message: string, targetIds: readonly string[] = [], metadata: WorkEvent["metadata"] = {}) => {
+    const event = parseWorkEvent({ schemaVersion: 1, id: `session-${++eventSequence}`, type, timestamp: new Date().toISOString(), message, targetIds, metadata });
+    workEvents.push(event);
+    graph = withWorkEvents(graph, workEvents);
+    return event;
+  };
+  const repositoryId = graph.nodes.find(({ kind }) => kind === "repository")?.id;
+  addEvent("plan_created", "Started repository watch session", repositoryId ? [repositoryId] : []);
+  addEvent("command_started", "Analyzed Solidity project", repositoryId ? [repositoryId] : [], { command: "analyze" });
+  addEvent("work_completed", "Initial analysis completed", repositoryId ? [repositoryId] : []);
   const clients = new Set<import("node:http").ServerResponse>();
 
   const server = createServer((request, response) => {
-    void handleRequest(request.url ?? "/", response, webRoot, () => graph, clients);
+    void handleRequest(request, response, webRoot, () => graph, clients, (event) => {
+      workEvents.push(event);
+      workEvents.sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
+      graph = withWorkEvents(graph, workEvents);
+      broadcast(clients, graph);
+    });
   });
   await listen(server, port);
   const address = server.address();
@@ -75,7 +92,10 @@ export async function startWatchServer(
       const changes = new Map(changedFiles);
       changedFiles.clear();
       queued = queued.then(async () => {
+        const targets = graph.nodes.filter((node) => node.source && changes.has(node.source.file)).map(({ id }) => id);
+        addEvent("file_edit_started", `Processing ${changes.size} Solidity file change${changes.size === 1 ? "" : "s"}`, targets, { files: [...changes.keys()] });
         graph = withStatuses(graph, changes, "active");
+        graph = withWorkEvents(graph, workEvents);
         broadcast(clients, graph);
         try {
           const nextAnalysis = await analyzeSolidityStructure(projectPath, analysisOptions);
@@ -89,6 +109,8 @@ export async function startWatchServer(
         } catch (error) {
           graph = withStatuses(graph, changes, "failed", [{ severity: "error", message: error instanceof Error ? error.message : String(error) }]);
         }
+        const failed = graph.nodes.some((node) => node.source && changes.has(node.source.file) && node.status === "failed");
+        addEvent("file_edit_completed", failed ? "Analysis completed with errors" : "Solidity file changes analyzed", graph.nodes.filter((node) => node.source && changes.has(node.source.file)).map(({ id }) => id), { files: [...changes.keys()], outcome: failed ? "failed" : "passed" });
         broadcast(clients, graph);
       });
     }, options.debounceMs ?? 100);
@@ -120,17 +142,29 @@ export async function startWatchServer(
 }
 
 async function handleRequest(
-  requestUrl: string,
+  request: import("node:http").IncomingMessage,
   response: import("node:http").ServerResponse,
   webRoot: string,
   currentGraph: () => Graph,
   clients: Set<import("node:http").ServerResponse>,
+  recordExternalEvent: (event: WorkEvent) => void,
 ): Promise<void> {
   try {
+    const requestUrl = request.url ?? "/";
     const pathname = decodeURIComponent(new URL(requestUrl, "http://localhost").pathname);
     if (pathname === "/api/graph") {
       response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
       response.end(serializeGraph(currentGraph()));
+      return;
+    }
+    if (pathname === "/api/work-events" && request.method === "POST") {
+      try {
+        const event = parseWorkEvent(JSON.parse(await readRequestBody(request)) as unknown);
+        recordExternalEvent(event);
+        response.writeHead(202, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(event));
+      } catch (error) {
+        response.writeHead(400, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      }
       return;
     }
     if (pathname === "/api/events") {
@@ -154,6 +188,23 @@ async function handleRequest(
   } catch {
     response.writeHead(404, { "content-type": "text/plain; charset=utf-8" }).end("Not found");
   }
+}
+
+function withWorkEvents(graph: Graph, events: readonly WorkEvent[]): Graph {
+  return parseGraph({ ...graph, metadata: { ...graph.metadata, workEvents: events } });
+}
+
+function readRequestBody(request: import("node:http").IncomingMessage): Promise<string> {
+  return new Promise((resolve, reject) => {
+    let body = "";
+    request.setEncoding("utf8");
+    request.on("data", (chunk: string) => {
+      body += chunk;
+      if (body.length > 1_000_000) request.destroy(new Error("Event payload is too large."));
+    });
+    request.on("end", () => resolve(body));
+    request.on("error", reject);
+  });
 }
 
 async function graphFromAnalysis(projectPath: string, analysis: Awaited<ReturnType<typeof analyzeSolidityStructure>>): Promise<Graph> {

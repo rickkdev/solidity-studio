@@ -41,6 +41,20 @@ describe("codevis watch", () => {
       const graph = parseGraph(await graphResponse.json());
       expect(graph.nodes.some(({ label }) => label === "Vault")).toBe(true);
       expect(graph.metadata.sources).toBeTypeOf("object");
+      expect(graph.metadata.workEvents).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: "plan_created" }),
+        expect.objectContaining({ type: "work_completed" }),
+      ]));
+
+      const malformed = await fetch(`${service.url}/api/work-events`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ type: "noise" }) });
+      expect(malformed.status).toBe(400);
+      expect((await fetch(`${service.url}/api/graph`)).status).toBe(200);
+
+      const external = { schemaVersion: 1, id: "agent-step", type: "step_started", timestamp: "2026-08-10T16:00:00.000Z", message: "Inspect Vault", targetIds: [graph.nodes.find(({ label }) => label === "Vault")!.id], metadata: { agent: "codex" } };
+      const accepted = await fetch(`${service.url}/api/work-events`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(external) });
+      expect(accepted.status).toBe(202);
+      const updated = parseGraph(await (await fetch(`${service.url}/api/graph`)).json());
+      expect(updated.metadata.workEvents).toEqual(expect.arrayContaining([external]));
     } finally {
       await service.close();
       await rm(webRoot, { recursive: true, force: true });

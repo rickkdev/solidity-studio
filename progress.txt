@@ -13,6 +13,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Graph filtering should be applied after progressive containment visibility, while search explicitly expands all `contains` ancestors before selecting and focusing a hidden result; security presets may bypass collapsed detail but should retain visible hierarchy.
 - The production watch service serves `apps/web/dist` on `127.0.0.1` and owns the existing `/api/graph` boundary; expose a programmatic close method so command signals and integration tests share the same shutdown path.
 - Live watch updates use stable node IDs and serialized, debounced analysis; `/api/graph` always returns the latest validated snapshot while `/api/events` pushes the same payload over server-sent events.
+- Session work events use the independently validated shared event schema and travel in `graph.metadata.workEvents`; accept semantic agent events through `POST /api/work-events` and keep malformed input isolated from the active session.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -110,4 +111,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Updated the watch service, CLI integration tests, web graph loading/rendering/styles, CLI dependencies and lockfile, plus PRD/progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (30 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (2 Chromium tests passed), and `git diff --check` all passed.
 - Learnings for future iterations: Chokidar v4 watches directory paths rather than glob patterns; filter `.sol` events at the event boundary. Keep live updates as fully validated graph snapshots so the UI and polling endpoint cannot diverge.
+---
+
+## 2026-08-10 18:33 CEST - US-015
+- What was implemented: Added a versioned semantic work-event schema, watch-session analysis and filesystem activity recording, validated external event ingestion, live event delivery with graph snapshots, and a chronological linked UI timeline that reveals and focuses graph targets.
+- Files changed: Updated shared graph types and validation tests, watch service and integration tests, web timeline component/styles/tests and shared-source test resolution, plus PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (33 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (2 Chromium tests passed), and `git diff --check` all passed.
+- Learnings for future iterations: Keep work-event validation independent of graph parsing so agents can emit semantic events; carry the current-session event list in graph metadata so initial fetches and SSE updates remain one validated snapshot boundary.
 ---

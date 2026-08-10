@@ -10,7 +10,7 @@ import {
   type Edge,
   type Node,
 } from "@xyflow/react";
-import { graphEdgeKinds, graphNodeKinds, type Graph, type GraphEdgeKind, type GraphNode, type GraphNodeKind } from "@codevis/shared";
+import { graphEdgeKinds, graphNodeKinds, parseWorkEvent, type Graph, type GraphEdgeKind, type GraphNode, type GraphNodeKind, type WorkEvent } from "@codevis/shared";
 
 const kindGlyph: Record<GraphNodeKind, string> = {
   repository: "R", directory: "D", file: "F", contract: "C", function: "ƒ", modifier: "M",
@@ -66,6 +66,7 @@ export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
       <GraphFilters query={query} onQuery={setQuery} results={searchResults} onResult={revealSearchResult}
         nodeKinds={nodeKinds} onNodeKinds={setNodeKinds} edgeKinds={edgeKinds} onEdgeKinds={setEdgeKinds}
         securityOnly={securityOnly} onSecurityOnly={setSecurityOnly} onClear={clearFilters} />
+      <WorkTimeline graph={graph} onTarget={(node) => revealSearchResult(node)} />
       <div className={`graph-workspace${selectedNode ? " graph-workspace--inspecting" : ""}`}>
       <div className="graph-canvas" data-testid="graph-canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodeClick={(_, node) => {
@@ -83,6 +84,28 @@ export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
       </div>
     </section>
   );
+}
+
+function WorkTimeline({ graph, onTarget }: { readonly graph: Graph; readonly onTarget: (node: GraphNode) => void }) {
+  const events = workEventsFor(graph);
+  if (events.length === 0) return null;
+  const nodes = new Map(graph.nodes.map((node) => [node.id, node]));
+  return <section className="work-timeline" aria-label="Work timeline">
+    <header><strong>Session activity</strong><span>{events.length} events</span></header>
+    <ol>{events.map((event) => <li key={event.id}>
+      <time dateTime={event.timestamp}>{new Date(event.timestamp).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" })}</time>
+      <span className="work-event__type">{event.type.replaceAll("_", " ")}</span>
+      <span className="work-event__message">{event.message}</span>
+      {event.targetIds.map((id) => nodes.get(id)).filter((node): node is GraphNode => Boolean(node)).map((node) => <button type="button" key={node.id} onClick={() => onTarget(node)}>{node.label}</button>)}
+    </li>)}</ol>
+  </section>;
+}
+
+function workEventsFor(graph: Graph): WorkEvent[] {
+  if (!Array.isArray(graph.metadata.workEvents)) return [];
+  return graph.metadata.workEvents.flatMap((candidate) => {
+    try { return [parseWorkEvent(candidate)]; } catch { return []; }
+  }).sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
 }
 
 function GraphFilters({ query, onQuery, results, onResult, nodeKinds, onNodeKinds, edgeKinds, onEdgeKinds, securityOnly, onSecurityOnly, onClear }: {

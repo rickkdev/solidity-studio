@@ -1,4 +1,22 @@
 export const GRAPH_SCHEMA_VERSION = 1 as const;
+export const WORK_EVENT_SCHEMA_VERSION = 1 as const;
+
+export const workEventTypes = [
+  "plan_created", "step_started", "file_read", "file_edit_started", "file_edit_completed",
+  "command_started", "test_passed", "test_failed", "finding_created", "work_completed",
+] as const;
+
+export type WorkEventType = (typeof workEventTypes)[number];
+export interface WorkEvent {
+  readonly schemaVersion: typeof WORK_EVENT_SCHEMA_VERSION;
+  readonly id: string;
+  readonly type: WorkEventType;
+  /** ISO-8601 timestamp. */
+  readonly timestamp: string;
+  readonly message: string;
+  readonly targetIds: readonly string[];
+  readonly metadata: GraphMetadata;
+}
 
 export const graphNodeKinds = [
   "repository",
@@ -125,9 +143,41 @@ export class GraphValidationError extends Error {
   }
 }
 
+export class WorkEventValidationError extends Error {
+  public readonly issues: readonly string[];
+
+  public constructor(issues: readonly string[]) {
+    super(`Invalid work event:\n- ${issues.join("\n- ")}`);
+    this.name = "WorkEventValidationError";
+    this.issues = issues;
+  }
+}
+
 const nodeKinds = new Set<string>(graphNodeKinds);
 const edgeKinds = new Set<string>(graphEdgeKinds);
 const nodeStatuses = new Set<string>(graphNodeStatuses);
+const eventTypes = new Set<string>(workEventTypes);
+
+/** Validates a semantic event received from a local tool or agent. */
+export function parseWorkEvent(payload: unknown): WorkEvent {
+  const issues: string[] = [];
+  if (!isRecord(payload)) throw new WorkEventValidationError(["event must be an object"]);
+  if (payload.schemaVersion !== WORK_EVENT_SCHEMA_VERSION) issues.push(`schemaVersion must be ${WORK_EVENT_SCHEMA_VERSION}`);
+  requireNonEmptyString(payload.id, "id", issues);
+  requireEnum(payload.type, "type", eventTypes, issues);
+  if (requireNonEmptyString(payload.timestamp, "timestamp", issues) && Number.isNaN(Date.parse(payload.timestamp))) {
+    issues.push("timestamp must be a valid ISO-8601 date");
+  }
+  requireNonEmptyString(payload.message, "message", issues);
+  if (!Array.isArray(payload.targetIds)) issues.push("targetIds must be an array of unique non-empty strings");
+  else {
+    const ids = new Set<string>();
+    payload.targetIds.forEach((id, index) => validateUniqueId(id, `targetIds[${index}]`, ids, issues));
+  }
+  validateMetadata(payload.metadata, "metadata", issues);
+  if (issues.length > 0) throw new WorkEventValidationError(issues);
+  return payload as unknown as WorkEvent;
+}
 
 /** Validates an untrusted payload and returns it with the Graph type. */
 export function parseGraph(payload: unknown): Graph {

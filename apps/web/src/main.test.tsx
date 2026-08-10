@@ -129,6 +129,21 @@ describe("repository graph", () => {
     expect(screen.queryByText("deposit")).not.toBeInTheDocument();
   });
 
+  it("renders ordered work events and reveals linked graph targets", async () => {
+    const graphWithEvents = { ...graph, metadata: { ...graph.metadata, workEvents: [
+      { schemaVersion: 1, id: "later", type: "file_edit_completed", timestamp: "2026-08-10T16:00:02.000Z", message: "Deposit updated", targetIds: ["fn"], metadata: {} },
+      { schemaVersion: 1, id: "earlier", type: "step_started", timestamp: "2026-08-10T16:00:01.000Z", message: "Inspecting vault", targetIds: ["contract"], metadata: {} },
+    ] } };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graphWithEvents }));
+    render(<App />);
+    const timeline = await screen.findByLabelText("Work timeline");
+    expect(timeline).toHaveTextContent("step startedInspecting vault");
+    expect(timeline.textContent?.indexOf("Inspecting vault")).toBeLessThan(timeline.textContent?.indexOf("Deposit updated") ?? 0);
+    fireEvent.click(screen.getByRole("button", { name: "deposit" }));
+    expect(screen.getByLabelText("function deposit")).toBeInTheDocument();
+    expect(screen.getByLabelText("Details for deposit")).toBeInTheDocument();
+  });
+
   it("shows an empty state", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...graph, nodes: [], edges: [] }) }));
     render(<App />);
