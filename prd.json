@@ -78,7 +78,7 @@
         "Snapshot or equivalent tests verify deterministic output for the fixture"
       ],
       "priority": 5,
-      "passes": false,
+      "passes": true,
       "notes": "Preserve compiler diagnostics rather than silently dropping files that fail to parse."
     },
     {

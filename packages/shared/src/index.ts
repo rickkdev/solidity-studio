@@ -8,6 +8,8 @@ export const graphNodeKinds = [
   "function",
   "modifier",
   "event",
+  "error",
+  "state_variable",
   "test",
   "task",
   "command",

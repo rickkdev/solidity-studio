@@ -6,6 +6,11 @@ export {
   SolidityDiscoveryError,
   type DiscoverSolidityFilesOptions,
 } from "./discover-solidity-files.js";
+export {
+  analyzeSolidityStructure,
+  type SolidityDiagnostic,
+  type SolidityStructureAnalysis,
+} from "./analyze-solidity-structure.js";
 
 export function serviceStatus(): string {
   const graph = createEmptyGraph("Code Visualizer");

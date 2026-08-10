@@ -4,6 +4,7 @@ import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import {
+  analyzeSolidityStructure,
   discoverSolidityFiles,
   serviceStatus,
   SolidityDiscoveryError,
@@ -16,6 +17,113 @@ const fixtureRoot = fileURLToPath(
 describe("serviceStatus", () => {
   it("reports that the service foundation is ready", () => {
     expect(serviceStatus()).toBe("Code Visualizer local service ready");
+  });
+});
+
+describe("analyzeSolidityStructure", () => {
+  it("extracts deterministic structural nodes and accurate source ranges from compiler ASTs", async () => {
+    const first = await analyzeSolidityStructure(fixtureRoot);
+    const second = await analyzeSolidityStructure(fixtureRoot);
+
+    expect(second).toEqual(first);
+    expect(first.diagnostics.filter(({ severity }) => severity === "error")).toEqual([]);
+    expect(first.files).toEqual([
+      "src/INotifier.sol",
+      "src/Owned.sol",
+      "src/Vault.sol",
+      "test/Vault.t.sol",
+    ]);
+    expect(
+      Object.fromEntries(
+        ["file", "contract", "function", "modifier", "event", "error", "state_variable"].map(
+          (kind) => [kind, first.nodes.filter((node) => node.kind === kind).map((node) => node.label)],
+        ),
+      ),
+    ).toMatchInlineSnapshot(`
+      {
+        "contract": [
+          "INotifier",
+          "Owned",
+          "Vault",
+          "RecordingNotifier",
+          "VaultTest",
+        ],
+        "error": [
+          "Unauthorized",
+          "InsufficientBalance",
+          "TransferFailed",
+        ],
+        "event": [
+          "Deposited",
+          "Withdrawn",
+        ],
+        "file": [
+          "INotifier.sol",
+          "Owned.sol",
+          "Vault.sol",
+          "Vault.t.sol",
+        ],
+        "function": [
+          "notify",
+          "constructor",
+          "constructor",
+          "deposit",
+          "balanceOf",
+          "withdraw",
+          "_debit",
+          "notify",
+          "setUp",
+          "testOwnerIsDeployingTest",
+          "testIntentionalFailure",
+        ],
+        "modifier": [
+          "onlyOwner",
+        ],
+        "state_variable": [
+          "owner",
+          "balances",
+          "notifier",
+          "lastAccount",
+          "lastAmount",
+          "notifier",
+          "vault",
+        ],
+      }
+    `);
+
+    const vault = first.nodes.find((node) => node.kind === "contract" && node.label === "Vault")!;
+    expect(vault.metadata).toMatchObject({
+      contractKind: "contract",
+      abstract: false,
+      inheritanceNames: ["Owned"],
+    });
+    const deposit = first.nodes.find((node) => node.kind === "function" && node.label === "deposit")!;
+    expect(deposit.metadata).toMatchObject({ visibility: "external", mutability: "payable", payable: true });
+    expect(deposit.source).toMatchObject({
+      file: "src/Vault.sol",
+      start: { line: 21, column: 5 },
+      end: { line: 24, column: 6 },
+    });
+    const vaultSource = await readFile(`${fixtureRoot}src/Vault.sol`, "utf8");
+    expect(Buffer.from(vaultSource).subarray(deposit.source!.start.offset, deposit.source!.end.offset).toString())
+      .toContain("function deposit() external payable");
+  });
+
+  it("preserves compiler diagnostics with source locations", async () => {
+    const project = await mkdtemp(path.join(tmpdir(), "codevis-parser-"));
+    try {
+      await writeFile(path.join(project, "Broken.sol"), "pragma solidity ^0.8.24;\ncontract Broken { function nope( }\n");
+      const analysis = await analyzeSolidityStructure(project);
+      expect(analysis.nodes.filter(({ kind }) => kind === "file")).toHaveLength(1);
+      expect(analysis.diagnostics[0]).toMatchObject({
+        severity: "error",
+        type: "ParserError",
+        source: { file: "Broken.sol", start: { line: 2 } },
+      });
+      expect(analysis.diagnostics[0]?.message).toContain("ParserError");
+    } finally {
+      await rm(project, { recursive: true, force: true });
+    }
   });
 });
 

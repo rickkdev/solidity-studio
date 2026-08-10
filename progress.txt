@@ -33,3 +33,10 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Quality checks run: `npm run typecheck`, `npm test` (12 workspace tests passed), `npm run build`, and `git diff --check` all passed.
 - Learnings for future iterations: Reuse `discoverSolidityFiles` as the source-file entry point for analysis and watch mode so both features share deterministic paths and ignore behavior.
 ---
+
+## 2026-08-10 16:27 CEST - US-005
+- What was implemented: Added Solidity compiler AST analysis that extracts deterministic file, contract, function, modifier, event, custom-error, and state-variable nodes with structural metadata, byte-accurate source ranges, and preserved compiler diagnostics.
+- Files changed: Added `packages/cli/src/analyze-solidity-structure.ts`, exported and tested the analyzer, added `solc`, extended shared node kinds for errors and state variables, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (14 workspace tests passed), `npm run build`, and `git diff --check` all passed.
+- Learnings for future iterations: Reuse `analyzeSolidityStructure` and its compiler AST output path for relationship and behavior analysis; Solidity `src` offsets are UTF-8 byte offsets and should remain byte-based in graph source locations.
+---
