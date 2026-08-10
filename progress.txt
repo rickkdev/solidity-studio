@@ -14,6 +14,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - The production watch service serves `apps/web/dist` on `127.0.0.1` and owns the existing `/api/graph` boundary; expose a programmatic close method so command signals and integration tests share the same shutdown path.
 - Live watch updates use stable node IDs and serialized, debounced analysis; `/api/graph` always returns the latest validated snapshot while `/api/events` pushes the same payload over server-sent events.
 - Session work events use the independently validated shared event schema and travel in `graph.metadata.workEvents`; accept semantic agent events through `POST /api/work-events` and keep malformed input isolated from the active session.
+- Run Foundry with direct argument arrays and `shell: false`; keep its JSON test result model independent from graph mapping so CLI execution and later live visualization can share it.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -118,4 +119,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Updated shared graph types and validation tests, watch service and integration tests, web timeline component/styles/tests and shared-source test resolution, plus PRD/progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (33 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (2 Chromium tests passed), and `git diff --check` all passed.
 - Learnings for future iterations: Keep work-event validation independent of graph parsing so agents can emit semantic events; carry the current-session event list in graph metadata so initial fetches and SSE updates remain one validated snapshot boundary.
+---
+
+## 2026-08-10 18:36 CEST - US-016
+- What was implemented: Added Foundry project and executable prerequisite detection, direct shell-free test execution with optional filters, stable JSON parsing for names, durations, passed/failed/skipped states, actionable compiler and prerequisite diagnostics, correct exit codes, and a public `codevis test [filter]` command.
+- Files changed: Added the Foundry test runner, extended CLI command parsing/exports and integration coverage, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (37 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (2 Chromium tests passed), and `git diff --check` all passed; real Forge fixture runs covered passing, failing, filtered, compiler-error, and unavailable cases.
+- Learnings for future iterations: Invoke Forge using a direct argument array with `shell: false`; retain its parsed result model independently so US-017 can map results and runtime events onto graph nodes without coupling execution to the UI.
 ---

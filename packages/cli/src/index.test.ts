@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import {
   analyzeSolidityStructure,
   discoverSolidityFiles,
+  parseFoundryJson,
+  runFoundryTests,
   runCli,
   serviceStatus,
   startWatchServer,
@@ -16,6 +18,58 @@ import { parseGraph } from "@codevis/shared";
 const fixtureRoot = fileURLToPath(
   new URL("../test/fixtures/solidity-project/", import.meta.url),
 );
+
+describe("Foundry tests", () => {
+  it("parses deterministic passing, failing, and skipped machine output", () => {
+    const parsed = parseFoundryJson(JSON.stringify({
+      "test/Example.t.sol:ExampleTest": {
+        test_results: {
+          "testPass()": { status: "Success", duration: "2ms 500µs", reason: null },
+          "testFail()": { status: "Failure", duration: "1ms", reason: "expected failure" },
+          "testSkip()": { status: "Skipped", duration: "0ns", reason: null },
+        },
+      },
+    }));
+    expect(parsed.results).toEqual([
+      expect.objectContaining({ name: "testFail()", status: "failed", durationMs: 1, reason: "expected failure" }),
+      expect.objectContaining({ name: "testPass()", status: "passed", durationMs: 2.5 }),
+      expect.objectContaining({ name: "testSkip()", status: "skipped", durationMs: 0 }),
+    ]);
+  });
+
+  it("runs and filters the fixture without a shell", async () => {
+    const available = await runFoundryTests(fixtureRoot, "testOwnerIsDeployingTest");
+    expect(available.exitCode).toBe(0);
+    expect(available.results).toEqual([
+      expect.objectContaining({ name: "testOwnerIsDeployingTest()", status: "passed" }),
+    ]);
+
+    const full = await runFoundryTests(fixtureRoot);
+    expect(full.exitCode).not.toBe(0);
+    expect(full.results).toEqual(expect.arrayContaining([
+      expect.objectContaining({ name: "testIntentionalFailure()", status: "failed", reason: "intentional fixture failure" }),
+      expect.objectContaining({ name: "testOwnerIsDeployingTest()", status: "passed" }),
+    ]));
+  });
+
+  it("reports missing Foundry prerequisites and compiler failures", async () => {
+    const project = await mkdtemp(path.join(tmpdir(), "codevis-not-foundry-"));
+    try {
+      await expect(runFoundryTests(project)).rejects.toThrow(/no foundry\.toml/);
+      await writeFile(path.join(project, "foundry.toml"), "[profile.default]\nsrc = 'src'\n");
+      await mkdir(path.join(project, "src"));
+      await writeFile(path.join(project, "src", "Broken.sol"), "contract Broken { function nope( }");
+      const broken = await runFoundryTests(project);
+      expect(broken.exitCode).not.toBe(0);
+      expect(broken.results).toEqual([]);
+      expect(broken.diagnostics.join("\n")).toMatch(/Compiler run failed|ParserError/);
+      await expect(runFoundryTests(project, undefined, { forgeExecutable: path.join(project, "missing-forge") }))
+        .rejects.toThrow(/forge executable is unavailable/);
+    } finally {
+      await rm(project, { recursive: true, force: true });
+    }
+  });
+});
 
 describe("serviceStatus", () => {
   it("reports that the service foundation is ready", () => {
@@ -145,9 +199,25 @@ describe("codevis analyze", () => {
       expect(await runCli(["--help"], help.io)).toBe(0);
       expect(help.output().stdout).toContain("Usage: codevis <command> [path] [options]");
       expect(help.output().stdout).toContain("watch [path]");
+      expect(help.output().stdout).toContain("test [filter]");
       expect(help.output().stdout).toContain("--output <file>");
     } finally {
       await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("runs filtered Foundry tests as machine-readable JSON", async () => {
+    const previous = process.cwd();
+    process.chdir(fixtureRoot);
+    try {
+      const capture = captureIo();
+      expect(await runCli(["test", "testOwnerIsDeployingTest"], capture.io)).toBe(0);
+      expect(JSON.parse(capture.output().stdout).results).toEqual([
+        expect.objectContaining({ name: "testOwnerIsDeployingTest()", status: "passed" }),
+      ]);
+      expect(capture.output().stderr).toContain("Foundry complete: 1 passed, 0 failed, 0 skipped.");
+    } finally {
+      process.chdir(previous);
     }
   });
 

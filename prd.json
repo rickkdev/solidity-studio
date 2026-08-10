@@ -254,7 +254,7 @@
         "Integration tests use the fixture or recorded deterministic Foundry output and cover passing, failing, filtered, and unavailable cases"
       ],
       "priority": 16,
-      "passes": false,
+      "passes": true,
       "notes": "Keep command execution local and explicit. Wallets and public-chain transactions are not part of the MVP."
     },
     {

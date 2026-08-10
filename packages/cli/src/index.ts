@@ -13,6 +13,15 @@ export {
 } from "./analyze-solidity-structure.js";
 export { runCli, type CliIo } from "./run-cli.js";
 export {
+  FoundryPrerequisiteError,
+  parseFoundryJson,
+  runFoundryTests,
+  type FoundryTestResult,
+  type FoundryTestRun,
+  type FoundryTestStatus,
+  type RunFoundryTestsOptions,
+} from "./run-foundry-tests.js";
+export {
   startWatchServer,
   WatchAnalysisError,
   type WatchServer,

@@ -3,6 +3,7 @@ import path from "node:path";
 import { parseGraph, serializeGraph, type Graph } from "@codevis/shared";
 import { analyzeSolidityStructure, type SolidityDiagnostic } from "./analyze-solidity-structure.js";
 import { startWatchServer, WatchAnalysisError } from "./watch-server.js";
+import { runFoundryTests } from "./run-foundry-tests.js";
 
 export interface CliIo {
   readonly stdout: Pick<NodeJS.WriteStream, "write">;
@@ -16,6 +17,7 @@ Analyze a Solidity project and emit its validated graph as JSON.
 Commands:
   analyze [path]       Analyze path (defaults to the current directory)
   watch [path]         Start the local visualizer for path
+  test [filter]        Run Foundry tests in the current directory
 
 Options:
   -o, --output <file>  Write graph JSON to a file instead of stdout
@@ -52,6 +54,18 @@ export async function runCli(
         if (error instanceof WatchAnalysisError) writeDiagnostics(error.diagnostics, io.stderr);
         throw error;
       }
+    }
+
+    if (parsed.command === "test") {
+      io.stderr.write(`Running Foundry tests: ${path.resolve(parsed.projectPath)}\n`);
+      const run = await runFoundryTests(parsed.projectPath, parsed.testFilter);
+      for (const diagnostic of run.diagnostics) io.stderr.write(`${diagnostic}\n`);
+      io.stdout.write(`${JSON.stringify(run, null, 2)}\n`);
+      const passed = run.results.filter(({ status }) => status === "passed").length;
+      const failed = run.results.filter(({ status }) => status === "failed").length;
+      const skipped = run.results.filter(({ status }) => status === "skipped").length;
+      io.stderr.write(`Foundry complete: ${passed} passed, ${failed} failed, ${skipped} skipped.\n`);
+      return run.exitCode === 0 && failed === 0 ? 0 : 1;
     }
 
     const project = path.resolve(parsed.projectPath);
@@ -93,29 +107,30 @@ export async function runCli(
 }
 
 interface ParsedArguments {
-  readonly command: "analyze" | "watch";
+  readonly command: "analyze" | "watch" | "test";
   readonly help: boolean;
   readonly projectPath: string;
   readonly outputPath?: string;
   readonly port?: number;
+  readonly testFilter?: string;
 }
 
 function parseArguments(args: readonly string[]): ParsedArguments {
   if (args.includes("--help") || args.includes("-h")) return { command: "analyze", help: true, projectPath: "." };
-  if (args[0] !== "analyze" && args[0] !== "watch") {
+  if (args[0] !== "analyze" && args[0] !== "watch" && args[0] !== "test") {
     throw new Error(args.length === 0
       ? "missing command. Run 'codevis --help' for usage."
       : `unknown command '${args[0]}'. Run 'codevis --help' for usage.`);
   }
 
-  let projectPath = ".";
+  const projectPath = ".";
   let outputPath: string | undefined;
-  let hasProjectPath = false;
+  let positional: string | undefined;
   let port: number | undefined;
   for (let index = 1; index < args.length; index += 1) {
     const argument = args[index]!;
     if (argument === "--output" || argument === "-o") {
-      if (args[0] === "watch") throw new Error(`${argument} is only available for analyze.`);
+      if (args[0] !== "analyze") throw new Error(`${argument} is only available for analyze.`);
       const value = args[index + 1];
       if (!value || value.startsWith("-")) throw new Error(`${argument} requires a file path.`);
       outputPath = value;
@@ -129,17 +144,17 @@ function parseArguments(args: readonly string[]): ParsedArguments {
       index += 1;
     } else if (argument.startsWith("-")) {
       throw new Error(`unknown option '${argument}'. Run 'codevis --help' for usage.`);
-    } else if (hasProjectPath) {
+    } else if (positional !== undefined) {
       throw new Error(`unexpected argument '${argument}'. Run 'codevis --help' for usage.`);
     } else {
-      projectPath = argument;
-      hasProjectPath = true;
+      positional = argument;
     }
   }
   return {
     command: args[0],
     help: false,
-    projectPath,
+    projectPath: args[0] === "test" ? projectPath : (positional ?? projectPath),
+    ...(args[0] === "test" && positional !== undefined ? { testFilter: positional } : {}),
     ...(outputPath === undefined ? {} : { outputPath }),
     ...(port === undefined ? {} : { port }),
   };
