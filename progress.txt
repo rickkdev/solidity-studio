@@ -19,3 +19,10 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Quality checks run: `npm run typecheck`, `npm test` (8 workspace tests passed), `npm run build`, and `git diff --check` all passed.
 - Learnings for future iterations: Use `createStableNodeId` for source-derived node identities and pass untrusted or deserialized graphs through `parseGraph` before consumers use them.
 ---
+
+## 2026-08-10 16:20 CEST - US-003
+- What was implemented: Added a documented Foundry fixture with imported Solidity files, related contracts, inheritance, public/internal functions, a modifier, state reads/writes, events, custom errors, external and value-sending calls, plus passing and intentionally failing tests; added an automated fixture availability check.
+- Files changed: Added `packages/cli/test/fixtures/solidity-project`, expanded `packages/cli/src/index.test.ts`, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (9 workspace tests passed), `npm run build`, `forge build`, and `git diff --check` all passed.
+- Learnings for future iterations: Reuse `packages/cli/test/fixtures/solidity-project` for Solidity analyzer and Foundry integration tests; the intentionally failing Foundry test is expected fixture behavior.
+---

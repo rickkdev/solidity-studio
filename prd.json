@@ -47,7 +47,7 @@
         "An automated check confirms the expected fixture files are available"
       ],
       "priority": 3,
-      "passes": false,
+      "passes": true,
       "notes": "Keep the contracts deliberately small; they exist to cover analysis behavior, not to model production-safe financial logic."
     },
     {
