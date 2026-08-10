@@ -10,6 +10,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - The web client loads validated graph data from `/api/graph`; development and production smoke tests use the static fixture at that path until the watch service owns the endpoint.
 - Progressive graph visibility should follow `contains` ancestry, with files initially expanded for architecture and contracts initially collapsed; filter edges to visible endpoints whenever nodes are hidden.
 - Source inspection reads repository-relative file contents from the validated graph's `metadata.sources` map and uses node line/column ranges for excerpts and highlights.
+- Graph filtering should be applied after progressive containment visibility, while search explicitly expands all `contains` ancestors before selecting and focusing a hidden result; security presets may bypass collapsed detail but should retain visible hierarchy.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -86,4 +87,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Updated the repository graph component and styling, enriched the development graph with source evidence, expanded component tests, and updated PRD/progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (25 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (Chromium smoke test passed), and `git diff --check` all passed.
 - Learnings for future iterations: Keep source contents keyed by normalized repository-relative paths in `graph.metadata.sources`; source positions use exclusive end columns, which makes precise inline highlighting deterministic.
+---
+
+## 2026-08-10 18:21 CEST - US-012
+- What was implemented: Added case-insensitive node label and repository-path search with ancestor reveal, selection, and viewport focus; independent node-kind and relationship-kind toggles; a security evidence preset for external calls, state writes, value-related functions, and findings; and full filter reset behavior.
+- Files changed: Updated the repository graph component and responsive filter styling, expanded component and Chromium browser coverage, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (28 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (2 Chromium smoke tests passed), and `git diff --check` all passed.
+- Learnings for future iterations: Apply user filters after progressive graph visibility; search results should expand containment ancestors before viewport focus, while evidence presets can intentionally reveal matching collapsed nodes together with their hierarchy.
 ---

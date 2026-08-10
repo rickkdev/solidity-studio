@@ -15,3 +15,15 @@ test("renders the fixture graph and supports canvas controls", async ({ page }) 
   await page.getByRole("button", { name: "Fit expanded" }).click();
   await page.getByRole("button", { name: "Reset view" }).click();
 });
+
+test("searches and filters graph evidence", async ({ page }) => {
+  await page.goto("/");
+  await page.getByLabel("Find symbol or path").fill("SRC/VAULT.SOL");
+  await page.getByRole("button", { name: /deposit.*src\/Vault.sol/i }).click();
+  await expect(page.getByLabel("Details for deposit")).toBeVisible();
+  await page.getByRole("button", { name: "Security evidence" }).click();
+  await expect(page.getByText("External value transfer", { exact: true })).toBeVisible();
+  await expect(page.getByText("onlyOwner", { exact: true })).toBeHidden();
+  await page.getByRole("button", { name: "Clear filters" }).click();
+  await expect(page.getByText("onlyOwner", { exact: true })).toBeVisible();
+});

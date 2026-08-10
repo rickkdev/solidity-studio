@@ -9,7 +9,7 @@ const graph = {
     { id: "repo", kind: "repository", label: "fixture", status: "idle", metadata: {} },
     { id: "file", kind: "file", label: "Vault.sol", status: "idle", metadata: {} },
     { id: "contract", kind: "contract", label: "Vault", status: "idle", metadata: {} },
-    { id: "fn", kind: "function", label: "deposit", status: "idle", metadata: { visibility: "external", payable: true }, source: { file: "src/Vault.sol", start: { offset: 19, line: 2, column: 3 }, end: { offset: 57, line: 2, column: 41 } } },
+    { id: "fn", kind: "function", label: "deposit", status: "idle", metadata: { visibility: "external", payable: true, hasExternalCalls: true }, source: { file: "src/Vault.sol", start: { offset: 19, line: 2, column: 3 }, end: { offset: 57, line: 2, column: 41 } } },
     { id: "modifier", kind: "modifier", label: "onlyOwner", status: "idle", metadata: {} },
     { id: "event", kind: "event", label: "Deposited", status: "idle", metadata: {} },
     { id: "test", kind: "test", label: "testDeposit", status: "passed", metadata: {} },
@@ -50,7 +50,7 @@ describe("repository graph", () => {
     await screen.findByText("Vault");
 
     fireEvent.click(screen.getByLabelText("Expand Vault"));
-    expect(screen.getByText("deposit")).toBeInTheDocument();
+    expect(screen.getByLabelText("function deposit")).toBeInTheDocument();
     expect(screen.getByText("7 relationships")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Fit expanded" })).toBeEnabled();
 
@@ -88,6 +88,45 @@ describe("repository graph", () => {
     render(<App />);
     fireEvent.click(await screen.findByText("Review call"));
     expect(screen.getByLabelText("Details for Review call")).toHaveTextContent("This node was generated without a source location.");
+  });
+
+  it("searches labels and paths, reveals hidden ancestors, selects, and focuses a result", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
+    render(<App />);
+    await screen.findByText("Vault");
+    fireEvent.change(screen.getByLabelText("Find symbol or path"), { target: { value: "SRC/VAULT" } });
+    expect(screen.getByLabelText("Search results")).toHaveTextContent("deposit");
+    fireEvent.click(screen.getByRole("button", { name: /deposit.*src\/Vault.sol/i }));
+    expect(screen.getByLabelText("function deposit")).toBeInTheDocument();
+    expect(screen.getByLabelText("Details for deposit")).toBeInTheDocument();
+  });
+
+  it("toggles node and edge kinds independently and clears filters", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
+    render(<App />);
+    await screen.findByText("Vault");
+    fireEvent.click(screen.getByText("Node kinds"));
+    fireEvent.click(screen.getByLabelText("finding"));
+    expect(screen.queryByText("Review call")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByText("Relationships"));
+    fireEvent.click(screen.getByLabelText("contains"));
+    expect(screen.getByText("0 relationships")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByText("Review call")).toBeInTheDocument();
+    expect(screen.getByText("2 relationships")).toBeInTheDocument();
+  });
+
+  it("applies and resets the security evidence preset", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
+    render(<App />);
+    await screen.findByText("Vault");
+    fireEvent.click(screen.getByRole("button", { name: "Security evidence" }));
+    expect(screen.getByText("deposit")).toBeInTheDocument();
+    expect(screen.getByText("Review call")).toBeInTheDocument();
+    expect(screen.queryByText("onlyOwner")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Clear filters" }));
+    expect(screen.getByText("onlyOwner")).toBeInTheDocument();
+    expect(screen.queryByText("deposit")).not.toBeInTheDocument();
   });
 
   it("shows an empty state", async () => {

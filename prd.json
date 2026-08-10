@@ -190,7 +190,7 @@
         "Component tests verify search, focus, filter toggles, preset behavior, and reset"
       ],
       "priority": 12,
-      "passes": false,
+      "passes": true,
       "notes": "The security preset is a view over evidence, not an automated vulnerability verdict."
     },
     {

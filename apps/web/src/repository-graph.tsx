@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Background,
   BackgroundVariant,
@@ -10,7 +10,7 @@ import {
   type Edge,
   type Node,
 } from "@xyflow/react";
-import type { Graph, GraphEdgeKind, GraphNode, GraphNodeKind } from "@codevis/shared";
+import { graphEdgeKinds, graphNodeKinds, type Graph, type GraphEdgeKind, type GraphNode, type GraphNodeKind } from "@codevis/shared";
 
 const kindGlyph: Record<GraphNodeKind, string> = {
   repository: "R", directory: "D", file: "F", contract: "C", function: "ƒ", modifier: "M",
@@ -25,23 +25,47 @@ const relationshipLabel: Record<GraphEdgeKind, string> = {
 export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => initialExpansion(graph));
   const [selectedId, setSelectedId] = useState<string>();
-  const visibleIds = useMemo(() => visibleNodeIds(graph, expanded), [graph, expanded]);
+  const [query, setQuery] = useState("");
+  const [nodeKinds, setNodeKinds] = useState<ReadonlySet<GraphNodeKind>>(() => new Set(graphNodeKinds));
+  const [edgeKinds, setEdgeKinds] = useState<ReadonlySet<GraphEdgeKind>>(() => new Set(graphEdgeKinds));
+  const [securityOnly, setSecurityOnly] = useState(false);
+  const [focusId, setFocusId] = useState<string>();
+  const structuralIds = useMemo(() => visibleNodeIds(graph, expanded), [graph, expanded]);
+  const visibleIds = useMemo(() => filteredNodeIds(graph, structuralIds, nodeKinds, securityOnly), [graph, structuralIds, nodeKinds, securityOnly]);
+  const searchResults = useMemo(() => searchNodes(graph, query), [graph, query]);
   const toggleExpanded = (id: string) => setExpanded((current) => {
     const next = new Set(current);
     if (next.has(id)) next.delete(id); else next.add(id);
     return next;
   });
   const { nodes, edges } = useMemo(
-    () => toFlowElements(graph, visibleIds, expanded, toggleExpanded, selectedId),
-    [graph, visibleIds, expanded, selectedId],
+    () => toFlowElements(graph, visibleIds, edgeKinds, expanded, toggleExpanded, selectedId),
+    [graph, visibleIds, edgeKinds, expanded, selectedId],
   );
   const selectedNode = graph.nodes.find((node) => node.id === selectedId);
+  const revealSearchResult = (node: GraphNode) => {
+    setExpanded((current) => new Set([...current, ...ancestorIds(graph, node.id)]));
+    setNodeKinds((current) => new Set([...current, node.kind]));
+    setSecurityOnly(false);
+    setSelectedId(node.id);
+    setFocusId(node.id);
+    setQuery("");
+  };
+  const clearFilters = () => {
+    setQuery("");
+    setNodeKinds(new Set(graphNodeKinds));
+    setEdgeKinds(new Set(graphEdgeKinds));
+    setSecurityOnly(false);
+  };
   return (
     <section className="graph-panel" aria-label={`Repository graph for ${graph.repository}`}>
       <div className="graph-meta">
         <div><span className="graph-meta__label">Repository</span><strong>{graph.repository}</strong></div>
         <div className="graph-counts"><span>{nodes.length} nodes</span><span>{edges.length} relationships</span></div>
       </div>
+      <GraphFilters query={query} onQuery={setQuery} results={searchResults} onResult={revealSearchResult}
+        nodeKinds={nodeKinds} onNodeKinds={setNodeKinds} edgeKinds={edgeKinds} onEdgeKinds={setEdgeKinds}
+        securityOnly={securityOnly} onSecurityOnly={setSecurityOnly} onClear={clearFilters} />
       <div className={`graph-workspace${selectedNode ? " graph-workspace--inspecting" : ""}`}>
       <div className="graph-canvas" data-testid="graph-canvas">
         <ReactFlow nodes={nodes} edges={edges} onNodeClick={(_, node) => {
@@ -50,6 +74,7 @@ export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
           <Background color="#26322c" gap={22} size={1} variant={BackgroundVariant.Dots} />
           <MiniMap nodeColor={(node) => `var(--kind-${String(node.data.kind).replace("_", "-")})`} maskColor="rgba(8, 12, 10, .74)" />
           <Controls showInteractive={false} />
+          <FocusNode id={focusId} onFocused={() => setFocusId(undefined)} />
           <ViewportActions graph={graph} expanded={expanded} visibleIds={visibleIds} />
           <GraphLegend />
         </ReactFlow>
@@ -58,6 +83,36 @@ export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
       </div>
     </section>
   );
+}
+
+function GraphFilters({ query, onQuery, results, onResult, nodeKinds, onNodeKinds, edgeKinds, onEdgeKinds, securityOnly, onSecurityOnly, onClear }: {
+  readonly query: string; readonly onQuery: (value: string) => void; readonly results: readonly GraphNode[]; readonly onResult: (node: GraphNode) => void;
+  readonly nodeKinds: ReadonlySet<GraphNodeKind>; readonly onNodeKinds: (value: ReadonlySet<GraphNodeKind>) => void;
+  readonly edgeKinds: ReadonlySet<GraphEdgeKind>; readonly onEdgeKinds: (value: ReadonlySet<GraphEdgeKind>) => void;
+  readonly securityOnly: boolean; readonly onSecurityOnly: (value: boolean) => void; readonly onClear: () => void;
+}) {
+  const toggle = <T extends string>(values: ReadonlySet<T>, value: T) => {
+    const next = new Set(values); if (next.has(value)) next.delete(value); else next.add(value); return next;
+  };
+  return <div className="graph-filters">
+    <div className="graph-search"><label htmlFor="graph-search">Find symbol or path</label><input id="graph-search" value={query} onChange={(event) => onQuery(event.target.value)} placeholder="Search graph…" />
+      {query.trim() && <div className="search-results" aria-label="Search results">{results.length === 0 ? <p>No matching nodes</p> : results.map((node) => <button type="button" key={node.id} onClick={() => onResult(node)}><strong>{node.label}</strong><span>{node.source?.file ?? node.kind}</span></button>)}</div>}
+    </div>
+    <details><summary>Node kinds</summary><div className="filter-options">{graphNodeKinds.map((kind) => <label key={kind}><input type="checkbox" checked={nodeKinds.has(kind)} onChange={() => onNodeKinds(toggle(nodeKinds, kind))} />{kind.replace("_", " ")}</label>)}</div></details>
+    <details><summary>Relationships</summary><div className="filter-options">{graphEdgeKinds.map((kind) => <label key={kind}><input type="checkbox" checked={edgeKinds.has(kind)} onChange={() => onEdgeKinds(toggle(edgeKinds, kind))} />{relationshipLabel[kind]}</label>)}</div></details>
+    <button type="button" className={securityOnly ? "preset-button preset-button--active" : "preset-button"} aria-pressed={securityOnly} onClick={() => onSecurityOnly(!securityOnly)}>Security evidence</button>
+    <button type="button" className="clear-button" onClick={onClear}>Clear filters</button>
+  </div>;
+}
+
+function FocusNode({ id, onFocused }: { readonly id: string | undefined; readonly onFocused: () => void }) {
+  const flow = useReactFlow();
+  useEffect(() => {
+    if (!id) return;
+    const frame = requestAnimationFrame(() => { void flow.fitView({ nodes: [{ id }], padding: 1.4, maxZoom: 1.35, duration: 250 }); onFocused(); });
+    return () => cancelAnimationFrame(frame);
+  }, [flow, id, onFocused]);
+  return null;
 }
 
 function ViewportActions({ graph, expanded, visibleIds }: { readonly graph: Graph; readonly expanded: ReadonlySet<string>; readonly visibleIds: ReadonlySet<string> }) {
@@ -149,6 +204,7 @@ function humanize(value: string): string {
 function toFlowElements(
   graph: Graph,
   visibleIds: ReadonlySet<string>,
+  edgeKinds: ReadonlySet<GraphEdgeKind>,
   expanded: ReadonlySet<string>,
   toggleExpanded: (id: string) => void,
   selectedId?: string,
@@ -172,7 +228,7 @@ function toFlowElements(
       style: { width: 210 },
     }));
   }
-  const edges: Edge[] = graph.edges.filter((edge) => visibleIds.has(edge.source) && visibleIds.has(edge.target)).map((edge) => ({
+  const edges: Edge[] = graph.edges.filter((edge) => edgeKinds.has(edge.kind) && visibleIds.has(edge.source) && visibleIds.has(edge.target)).map((edge) => ({
     id: edge.id, source: edge.source, target: edge.target, label: relationshipLabel[edge.kind],
     className: `code-edge edge--${edge.kind}`, markerEnd: { type: MarkerType.ArrowClosed },
   }));
@@ -182,6 +238,36 @@ function toFlowElements(
     node.data = { ...node.data, label: <div className="node-label"><span>{kindGlyph[kind]}</span><div><small>{kind.replace("_", " ")}</small><strong>{node.data.label as string}</strong></div>{collapsible && <button type="button" className="node-toggle" aria-label={`${node.data.expanded ? "Collapse" : "Expand"} ${node.data.label as string}`} onClick={(event) => { event.stopPropagation(); toggleExpanded(node.id); }}>{node.data.expanded ? "−" : "+"}</button>}</div> };
   });
   return { nodes, edges };
+}
+
+function searchNodes(graph: Graph, query: string): GraphNode[] {
+  const term = query.trim().toLocaleLowerCase();
+  if (!term) return [];
+  return graph.nodes.filter((node) => node.label.toLocaleLowerCase().includes(term) || node.source?.file.toLocaleLowerCase().includes(term)).slice(0, 12);
+}
+
+function filteredNodeIds(graph: Graph, structuralIds: ReadonlySet<string>, kinds: ReadonlySet<GraphNodeKind>, securityOnly: boolean): ReadonlySet<string> {
+  const matching = graph.nodes.filter((node) => (securityOnly || structuralIds.has(node.id)) && kinds.has(node.kind) && (!securityOnly || isSecurityEvidence(graph, node))).map((node) => node.id);
+  const withAncestors = new Set(matching);
+  if (securityOnly) matching.forEach((id) => ancestorIds(graph, id).forEach((ancestor) => {
+    const node = graph.nodes.find((candidate) => candidate.id === ancestor);
+    if (node && kinds.has(node.kind)) withAncestors.add(ancestor);
+  }));
+  return withAncestors;
+}
+
+function isSecurityEvidence(graph: Graph, node: GraphNode): boolean {
+  if (node.kind === "finding") return true;
+  if (node.kind === "function" && (node.metadata.hasExternalCalls === true || node.metadata.externalCall === true || node.metadata.sendsValue === true || node.metadata.valueSending === true || node.metadata.payable === true)) return true;
+  return graph.edges.some((edge) => edge.kind === "writes" && (edge.source === node.id || edge.target === node.id));
+}
+
+function ancestorIds(graph: Graph, id: string): string[] {
+  const parent = new Map(graph.edges.filter((edge) => edge.kind === "contains").map((edge) => [edge.target, edge.source]));
+  const ancestors: string[] = [];
+  let current = parent.get(id);
+  while (current && !ancestors.includes(current)) { ancestors.push(current); current = parent.get(current); }
+  return ancestors;
 }
 
 function initialExpansion(graph: Graph): ReadonlySet<string> {
