@@ -19,13 +19,23 @@ export function App({ graphUrl = "/api/graph" }: AppProps) {
 
   useEffect(() => {
     const controller = new AbortController();
+    let events: EventSource | undefined;
     setState({ kind: "loading" });
     void fetch(graphUrl, { signal: controller.signal })
       .then(async (response) => {
         if (!response.ok) throw new Error(`Graph service returned ${response.status}`);
         return response.json() as Promise<unknown>;
       })
-      .then((payload) => setState({ kind: "ready", graph: parseGraph(payload) }))
+      .then((payload) => {
+        setState({ kind: "ready", graph: parseGraph(payload) });
+        if (typeof EventSource !== "undefined") {
+          events = new EventSource(new URL("/api/events", new URL(graphUrl, window.location.href)).toString());
+          events.onmessage = (event) => {
+            try { setState({ kind: "ready", graph: parseGraph(JSON.parse(event.data) as unknown) }); }
+            catch { /* Ignore malformed live messages and keep the last validated graph. */ }
+          };
+        }
+      })
       .catch((error: unknown) => {
         if (!controller.signal.aborted) {
           setState({
@@ -34,7 +44,7 @@ export function App({ graphUrl = "/api/graph" }: AppProps) {
           });
         }
       });
-    return () => controller.abort();
+    return () => { controller.abort(); events?.close(); };
   }, [graphUrl]);
 
   return (

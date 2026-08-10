@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@codevis/shared": "0.0.0",
+    "chokidar": "^4.0.3",
     "solc": "^0.8.36"
   },
   "devDependencies": {

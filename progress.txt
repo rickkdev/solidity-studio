@@ -12,6 +12,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Source inspection reads repository-relative file contents from the validated graph's `metadata.sources` map and uses node line/column ranges for excerpts and highlights.
 - Graph filtering should be applied after progressive containment visibility, while search explicitly expands all `contains` ancestors before selecting and focusing a hidden result; security presets may bypass collapsed detail but should retain visible hierarchy.
 - The production watch service serves `apps/web/dist` on `127.0.0.1` and owns the existing `/api/graph` boundary; expose a programmatic close method so command signals and integration tests share the same shutdown path.
+- Live watch updates use stable node IDs and serialized, debounced analysis; `/api/graph` always returns the latest validated snapshot while `/api/events` pushes the same payload over server-sent events.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -102,4 +103,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Added the watch server module, extended CLI parsing/help/exports and integration coverage, documented watch usage, and updated PRD/progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (29 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (2 Chromium tests passed), `git diff --check`, and a built CLI watch/fetch/SIGTERM smoke test all passed.
 - Learnings for future iterations: Keep the live service bound explicitly to `127.0.0.1`; reuse `startWatchServer` and its close boundary when adding filesystem watching and browser update transport.
+---
+
+## 2026-08-10 18:30 CEST - US-014
+- What was implemented: Added ignored-path-aware Solidity filesystem watching, debounced and serialized re-analysis, validated server-sent graph updates, live browser subscription, visible active/passed/failed/deleted node states, compiler-error retention, deletion tombstones, and clean watcher shutdown.
+- Files changed: Updated the watch service, CLI integration tests, web graph loading/rendering/styles, CLI dependencies and lockfile, plus PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (30 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (2 Chromium tests passed), and `git diff --check` all passed.
+- Learnings for future iterations: Chokidar v4 watches directory paths rather than glob patterns; filter `.sol` events at the event boundary. Keep live updates as fully validated graph snapshots so the UI and polling endpoint cannot diverge.
 ---

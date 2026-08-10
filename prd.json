@@ -222,7 +222,7 @@
         "Integration tests cover create, modify, delete, syntax-error, and recovery flows"
       ],
       "priority": 14,
-      "passes": false,
+      "passes": true,
       "notes": "WebSockets or server-sent events are acceptable. Favor correctness and ordered updates over premature incremental-analysis optimization."
     },
     {

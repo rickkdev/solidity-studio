@@ -222,7 +222,7 @@ function toFlowElements(
       id: node.id,
       position: { x: level * 285, y: row * 112 },
       data: { label: node.label, kind: node.kind, collapsible: isCollapsible(graph, node.id), expanded: expanded.has(node.id) },
-      className: `code-node code-node--${node.kind}`,
+      className: `code-node code-node--${node.kind} code-node--status-${node.status}`,
       selected: node.id === selectedId,
       ariaLabel: `${node.kind.replace("_", " ")} ${node.label}`,
       style: { width: 210 },

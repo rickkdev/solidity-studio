@@ -80,5 +80,11 @@ h1 { margin:0; font-size:22px; letter-spacing:-.03em; }
 .status-view { align-self:stretch; display:grid; place-content:center; justify-items:center; border:1px solid #26322c; border-radius:15px; background:#0e1511; text-align:center; }
 .status-view h2 { margin:20px 0 6px; font-size:20px; }.status-view p{max-width:420px;margin:0;color:#79887f;font-size:13px}.status-view--error h2{color:#ff8e82}
 .status-orbit { width:34px;height:34px;border:1px solid #435349;border-radius:50%;box-shadow:inset 0 0 0 8px #142019}.status-orbit--busy{border-top-color:#8ff0a8;animation:spin 1s linear infinite}@keyframes spin{to{transform:rotate(360deg)}}
+.code-node--status-active { animation: node-pulse .8s ease-in-out infinite alternate; box-shadow: 0 0 0 2px #78e89a, 0 0 22px rgba(120,232,154,.35); }
+.code-node--status-passed { box-shadow: 0 0 0 1px #5fc77c; }
+.code-node--status-warning { box-shadow: 0 0 0 2px #e6b85c; }
+.code-node--status-failed { box-shadow: 0 0 0 2px #ff7168; }
+.code-node--status-deleted { opacity: .45; filter: grayscale(1); border-style: dashed; }
+@keyframes node-pulse { to { transform: scale(1.025); } }
 @media(max-width:850px){.graph-workspace--inspecting{grid-template-columns:minmax(0,1fr)}.node-inspector{position:absolute;right:10px;bottom:10px;width:min(370px,calc(100% - 20px));height:min(72vh,620px);border:1px solid #29362f;border-radius:10px;box-shadow:0 18px 55px #000b}}
 @media(max-width:700px){.app-shell{padding:10px}.evidence-pill,.graph-legend{display:none}.graph-counts{display:none}.graph-filters{padding:8px;flex-wrap:wrap}.graph-search{width:100%}.clear-button{margin-left:0}.graph-canvas{height:calc(100vh - 155px)}.viewport-actions{top:auto;bottom:14px}}

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { access, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
+import { access, cp, mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -47,7 +47,50 @@ describe("codevis watch", () => {
     }
     await expect(fetch(service.url)).rejects.toThrow();
   });
+
+  it("pushes ordered graph states for create, modify, delete, syntax error, and recovery", async () => {
+    const project = await mkdtemp(path.join(tmpdir(), "codevis-live-project-"));
+    const webRoot = await mkdtemp(path.join(tmpdir(), "codevis-live-web-"));
+    await cp(fixtureRoot, project, { recursive: true });
+    await writeFile(path.join(webRoot, "index.html"), "<!doctype html><title>Code Visualizer</title>");
+    const service = await startWatchServer(project, { port: 0, webRoot, debounceMs: 20 });
+    const events = await fetch(`${service.url}/api/events`);
+    expect(events.headers.get("content-type")).toContain("text/event-stream");
+    try {
+      const createdFile = path.join(project, "src", "Live.sol");
+      await writeFile(createdFile, "contract Live { function ping() external {} }\n");
+      await waitForGraph(service.url, (graph) => graph.nodes.some((node) => node.label === "Live" && node.status === "passed"));
+
+      await writeFile(createdFile, "contract Live { function pong() external {} }\n");
+      await waitForGraph(service.url, (graph) => graph.nodes.some((node) => node.label === "pong" && node.status === "passed"));
+
+      await writeFile(createdFile, "contract Live { function broken( }\n");
+      const failed = await waitForGraph(service.url, (graph) => graph.nodes.some((node) => node.source?.file === "src/Live.sol" && node.status === "failed"));
+      expect(failed.metadata.diagnostics).toEqual(expect.arrayContaining([expect.objectContaining({ severity: "error" })]));
+
+      await writeFile(createdFile, "contract Live { function recovered() external {} }\n");
+      await waitForGraph(service.url, (graph) => graph.nodes.some((node) => node.label === "recovered" && node.status === "passed"));
+
+      await rm(createdFile);
+      await waitForGraph(service.url, (graph) => graph.nodes.some((node) => node.source?.file === "src/Live.sol" && node.status === "deleted"));
+    } finally {
+      await events.body?.cancel();
+      await service.close();
+      await rm(project, { recursive: true, force: true });
+      await rm(webRoot, { recursive: true, force: true });
+    }
+  }, 20_000);
 });
+
+async function waitForGraph(url: string, predicate: (graph: ReturnType<typeof parseGraph>) => boolean): Promise<ReturnType<typeof parseGraph>> {
+  const deadline = Date.now() + 5_000;
+  while (Date.now() < deadline) {
+    const graph = parseGraph(await (await fetch(`${url}/api/graph`)).json());
+    if (predicate(graph)) return graph;
+    await new Promise((resolve) => setTimeout(resolve, 25));
+  }
+  throw new Error("Timed out waiting for live graph update.");
+}
 
 describe("codevis analyze", () => {
   function captureIo() {
