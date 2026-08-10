@@ -107,6 +107,25 @@ describe("analyzeSolidityStructure", () => {
     const vaultSource = await readFile(`${fixtureRoot}src/Vault.sol`, "utf8");
     expect(Buffer.from(vaultSource).subarray(deposit.source!.start.offset, deposit.source!.end.offset).toString())
       .toContain("function deposit() external payable");
+
+    const nodeById = new Map(first.nodes.map((node) => [node.id, node]));
+    const relationships = first.edges.map((edge) => ({
+      kind: edge.kind,
+      source: nodeById.get(edge.source)?.label,
+      target: nodeById.get(edge.target)?.label,
+    }));
+    expect(relationships).toEqual(expect.arrayContaining([
+      { kind: "contains", source: "solidity-project", target: "src" },
+      { kind: "contains", source: "src", target: "Vault.sol" },
+      { kind: "contains", source: "Vault.sol", target: "Vault" },
+      { kind: "contains", source: "Vault", target: "deposit" },
+      { kind: "imports", source: "Vault.sol", target: "INotifier.sol" },
+      { kind: "imports", source: "Vault.sol", target: "Owned.sol" },
+      { kind: "imports", source: "Vault.t.sol", target: "Vault.sol" },
+      { kind: "inherits", source: "Vault", target: "Owned" },
+      { kind: "inherits", source: "RecordingNotifier", target: "INotifier" },
+    ]));
+    expect(new Set(first.edges.map(({ id }) => id)).size).toBe(first.edges.length);
   });
 
   it("preserves compiler diagnostics with source locations", async () => {
@@ -121,6 +140,21 @@ describe("analyzeSolidityStructure", () => {
         source: { file: "Broken.sol", start: { line: 2 } },
       });
       expect(analysis.diagnostics[0]?.message).toContain("ParserError");
+    } finally {
+      await rm(project, { recursive: true, force: true });
+    }
+  });
+
+  it("reports unresolved imports and inheritance without crashing", async () => {
+    const project = await mkdtemp(path.join(tmpdir(), "codevis-relationships-"));
+    try {
+      await writeFile(path.join(project, "MissingImport.sol"), 'import "./Absent.sol";\ncontract MissingImport {}\n');
+      await writeFile(path.join(project, "MissingBase.sol"), "contract MissingBase is UnknownBase {}\n");
+      const importAnalysis = await analyzeSolidityStructure(project);
+      expect(importAnalysis.diagnostics.map(({ message }) => message).join("\n")).toContain("Absent.sol");
+      const inheritanceAnalysis = await analyzeSolidityStructure(project, { ignoredPaths: ["MissingImport.sol"] });
+      expect(inheritanceAnalysis.diagnostics.map(({ message }) => message).join("\n")).toContain("UnknownBase");
+      expect(inheritanceAnalysis.edges.filter(({ kind }) => kind === "imports" || kind === "inherits")).toEqual([]);
     } finally {
       await rm(project, { recursive: true, force: true });
     }

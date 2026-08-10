@@ -94,7 +94,7 @@
         "Automated tests verify all expected fixture relationships"
       ],
       "priority": 6,
-      "passes": false,
+      "passes": true,
       "notes": "Keep unresolved references visible in diagnostics so users can distinguish incomplete analysis from missing relationships."
     },
     {

@@ -5,6 +5,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 ## Codebase Patterns
 - The npm workspaces are ordered shared, CLI, then web so production builds make shared package artifacts available to downstream packages.
 - Development type checks resolve `@codevis/shared` directly to its TypeScript source; CLI production builds resolve the already-built declaration output.
+- Solidity relationship resolution should use compiler AST declaration IDs and normalized source-unit paths rather than matching symbol labels.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -39,4 +40,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Added `packages/cli/src/analyze-solidity-structure.ts`, exported and tested the analyzer, added `solc`, extended shared node kinds for errors and state variables, and updated PRD/progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (14 workspace tests passed), `npm run build`, and `git diff --check` all passed.
 - Learnings for future iterations: Reuse `analyzeSolidityStructure` and its compiler AST output path for relationship and behavior analysis; Solidity `src` offsets are UTF-8 byte offsets and should remain byte-based in graph source locations.
+---
+
+## 2026-08-10 16:35 CEST - US-006
+- What was implemented: Added deterministic repository, directory, file, and contract hierarchy plus resolved Solidity import and inheritance edges, duplicate-edge suppression, and coverage for unresolved relationship diagnostics.
+- Files changed: Updated `packages/cli/src/analyze-solidity-structure.ts`, expanded `packages/cli/src/index.test.ts`, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (15 workspace tests passed), `npm run build`, and `git diff --check` all passed.
+- Learnings for future iterations: Resolve Solidity declarations through AST numeric IDs and imports through compiler-normalized absolute paths; compiler diagnostics remain the source of actionable unresolved import and inheritance errors.
 ---
