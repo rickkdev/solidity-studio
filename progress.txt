@@ -7,6 +7,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Development type checks resolve `@codevis/shared` directly to its TypeScript source; CLI production builds resolve the already-built declaration output.
 - Solidity relationship resolution should use compiler AST declaration IDs and normalized source-unit paths rather than matching symbol labels.
 - CLI commands should keep validated JSON on stdout and route progress plus source-linked compiler diagnostics to stderr.
+- The web client loads validated graph data from `/api/graph`; development and production smoke tests use the static fixture at that path until the watch service owns the endpoint.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -62,4 +63,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Added `packages/cli/src/run-cli.ts`, updated the CLI entry point and integration coverage, and updated PRD/progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (19 workspace tests passed), `npm run build`, `git diff --check`, executable `--help`, and a built CLI fixture-analysis smoke test all passed.
 - Learnings for future iterations: Keep stdout reserved for machine-readable graph payloads; use the exported `runCli` boundary for deterministic command tests while smoke-testing the built executable for bin wiring.
+---
+
+## 2026-08-10 16:46 CEST - US-009
+- What was implemented: Added a React Flow repository canvas that fetches and validates `/api/graph`, deterministically lays out hierarchy, distinguishes node and relationship kinds, supports pan/zoom/fit/reset, and presents polished loading, empty, and analysis-error states; added a representative development graph fixture.
+- Files changed: Rebuilt the web application UI and styles, added graph rendering and fixture data, added Vitest component tests and Playwright browser coverage, updated web dependencies/configuration, ignore rules, PRD, and progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (22 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (Chromium smoke test passed), and `git diff --check` all passed.
+- Learnings for future iterations: Keep `/api/graph` as the validated web/service boundary; React Flow nodes need measured container dimensions in DOM tests, while real viewport behavior remains covered by the Playwright smoke test.
 ---

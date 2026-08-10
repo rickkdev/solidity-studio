@@ -142,7 +142,7 @@
         "The fixture graph is verified with component tests and a browser smoke test"
       ],
       "priority": 9,
-      "passes": false,
+      "passes": true,
       "notes": "Use React Flow or an equivalent maintained graph canvas. Prioritize clarity over decorative animation."
     },
     {

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": 1,
+  "repository": "solidity-project",
+  "nodes": [
+    { "id": "repo", "kind": "repository", "label": "solidity-project", "status": "idle", "metadata": {} },
+    { "id": "src", "kind": "directory", "label": "src", "status": "idle", "metadata": {} },
+    { "id": "vault-file", "kind": "file", "label": "Vault.sol", "status": "idle", "metadata": {} },
+    { "id": "vault", "kind": "contract", "label": "Vault", "status": "idle", "metadata": { "contractKind": "contract" } },
+    { "id": "deposit", "kind": "function", "label": "deposit", "status": "idle", "metadata": { "visibility": "external", "payable": true, "externalCall": true } },
+    { "id": "owner-only", "kind": "modifier", "label": "onlyOwner", "status": "idle", "metadata": {} },
+    { "id": "deposited", "kind": "event", "label": "Deposited", "status": "idle", "metadata": {} },
+    { "id": "vault-test", "kind": "test", "label": "testDeposit", "status": "passed", "metadata": {} },
+    { "id": "finding", "kind": "finding", "label": "External value transfer", "status": "warning", "metadata": { "severity": "review" } }
+  ],
+  "edges": [
+    { "id": "e1", "kind": "contains", "source": "repo", "target": "src", "metadata": {} },
+    { "id": "e2", "kind": "contains", "source": "src", "target": "vault-file", "metadata": {} },
+    { "id": "e3", "kind": "contains", "source": "vault-file", "target": "vault", "metadata": {} },
+    { "id": "e4", "kind": "contains", "source": "vault", "target": "deposit", "metadata": {} },
+    { "id": "e5", "kind": "contains", "source": "vault", "target": "owner-only", "metadata": {} },
+    { "id": "e6", "kind": "contains", "source": "vault", "target": "deposited", "metadata": {} },
+    { "id": "e7", "kind": "applies_modifier", "source": "deposit", "target": "owner-only", "metadata": {} },
+    { "id": "e8", "kind": "tests", "source": "vault-test", "target": "deposit", "metadata": {} },
+    { "id": "e9", "kind": "modifies", "source": "finding", "target": "deposit", "metadata": {} }
+  ],
+  "metadata": { "fixture": true }
+}
