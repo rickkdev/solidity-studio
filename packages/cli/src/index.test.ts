@@ -8,6 +8,7 @@ import {
   discoverSolidityFiles,
   runCli,
   serviceStatus,
+  startWatchServer,
   SolidityDiscoveryError,
 } from "./index.js";
 import { parseGraph } from "@codevis/shared";
@@ -19,6 +20,32 @@ const fixtureRoot = fileURLToPath(
 describe("serviceStatus", () => {
   it("reports that the service foundation is ready", () => {
     expect(serviceStatus()).toBe("Code Visualizer local service ready");
+  });
+});
+
+describe("codevis watch", () => {
+  it("serves the visualizer and initial validated graph, then closes cleanly", async () => {
+    const webRoot = await mkdtemp(path.join(tmpdir(), "codevis-web-"));
+    await writeFile(path.join(webRoot, "index.html"), "<!doctype html><title>Code Visualizer</title>");
+    const service = await startWatchServer(fixtureRoot, { port: 0, webRoot });
+    try {
+      expect(service.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
+      expect(service.projectPath).toBe(path.resolve(fixtureRoot));
+
+      const ui = await fetch(service.url);
+      expect(ui.status).toBe(200);
+      expect(await ui.text()).toContain("Code Visualizer");
+
+      const graphResponse = await fetch(`${service.url}/api/graph`);
+      expect(graphResponse.status).toBe(200);
+      const graph = parseGraph(await graphResponse.json());
+      expect(graph.nodes.some(({ label }) => label === "Vault")).toBe(true);
+      expect(graph.metadata.sources).toBeTypeOf("object");
+    } finally {
+      await service.close();
+      await rm(webRoot, { recursive: true, force: true });
+    }
+    await expect(fetch(service.url)).rejects.toThrow();
   });
 });
 
@@ -59,7 +86,8 @@ describe("codevis analyze", () => {
 
       const help = captureIo();
       expect(await runCli(["--help"], help.io)).toBe(0);
-      expect(help.output().stdout).toContain("Usage: codevis analyze [path] [options]");
+      expect(help.output().stdout).toContain("Usage: codevis <command> [path] [options]");
+      expect(help.output().stdout).toContain("watch [path]");
       expect(help.output().stdout).toContain("--output <file>");
     } finally {
       await rm(directory, { recursive: true, force: true });

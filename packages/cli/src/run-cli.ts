@@ -2,21 +2,24 @@ import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseGraph, serializeGraph, type Graph } from "@codevis/shared";
 import { analyzeSolidityStructure, type SolidityDiagnostic } from "./analyze-solidity-structure.js";
+import { startWatchServer, WatchAnalysisError } from "./watch-server.js";
 
 export interface CliIo {
   readonly stdout: Pick<NodeJS.WriteStream, "write">;
   readonly stderr: Pick<NodeJS.WriteStream, "write">;
 }
 
-const HELP = `Usage: codevis analyze [path] [options]
+const HELP = `Usage: codevis <command> [path] [options]
 
 Analyze a Solidity project and emit its validated graph as JSON.
 
 Commands:
   analyze [path]       Analyze path (defaults to the current directory)
+  watch [path]         Start the local visualizer for path
 
 Options:
   -o, --output <file>  Write graph JSON to a file instead of stdout
+  -p, --port <number>  Watch server port (defaults to 4173)
   -h, --help           Show this help
 `;
 
@@ -30,6 +33,25 @@ export async function runCli(
     if (parsed.help) {
       io.stdout.write(HELP);
       return 0;
+    }
+
+    if (parsed.command === "watch") {
+      const project = path.resolve(parsed.projectPath);
+      io.stderr.write(`Analyzing Solidity project: ${project}\n`);
+      try {
+        const service = await startWatchServer(
+          project,
+          parsed.port === undefined ? {} : { port: parsed.port },
+        );
+        io.stderr.write(`Code Visualizer: ${service.url}\n`);
+        io.stderr.write(`Project: ${service.projectPath}\n`);
+        await waitForShutdown(service.close);
+        io.stderr.write("Watch server stopped.\n");
+        return 0;
+      } catch (error) {
+        if (error instanceof WatchAnalysisError) writeDiagnostics(error.diagnostics, io.stderr);
+        throw error;
+      }
     }
 
     const project = path.resolve(parsed.projectPath);
@@ -71,14 +93,16 @@ export async function runCli(
 }
 
 interface ParsedArguments {
+  readonly command: "analyze" | "watch";
   readonly help: boolean;
   readonly projectPath: string;
   readonly outputPath?: string;
+  readonly port?: number;
 }
 
 function parseArguments(args: readonly string[]): ParsedArguments {
-  if (args.includes("--help") || args.includes("-h")) return { help: true, projectPath: "." };
-  if (args[0] !== "analyze") {
+  if (args.includes("--help") || args.includes("-h")) return { command: "analyze", help: true, projectPath: "." };
+  if (args[0] !== "analyze" && args[0] !== "watch") {
     throw new Error(args.length === 0
       ? "missing command. Run 'codevis --help' for usage."
       : `unknown command '${args[0]}'. Run 'codevis --help' for usage.`);
@@ -87,12 +111,21 @@ function parseArguments(args: readonly string[]): ParsedArguments {
   let projectPath = ".";
   let outputPath: string | undefined;
   let hasProjectPath = false;
+  let port: number | undefined;
   for (let index = 1; index < args.length; index += 1) {
     const argument = args[index]!;
     if (argument === "--output" || argument === "-o") {
+      if (args[0] === "watch") throw new Error(`${argument} is only available for analyze.`);
       const value = args[index + 1];
       if (!value || value.startsWith("-")) throw new Error(`${argument} requires a file path.`);
       outputPath = value;
+      index += 1;
+    } else if (argument === "--port" || argument === "-p") {
+      if (args[0] !== "watch") throw new Error(`${argument} is only available for watch.`);
+      const value = args[index + 1];
+      if (!value || !/^\d+$/.test(value)) throw new Error(`${argument} requires a numeric port.`);
+      port = Number(value);
+      if (port < 1 || port > 65_535) throw new Error(`Invalid port '${value}'. Expected a number from 1 to 65535.`);
       index += 1;
     } else if (argument.startsWith("-")) {
       throw new Error(`unknown option '${argument}'. Run 'codevis --help' for usage.`);
@@ -103,9 +136,28 @@ function parseArguments(args: readonly string[]): ParsedArguments {
       hasProjectPath = true;
     }
   }
-  return outputPath === undefined
-    ? { help: false, projectPath }
-    : { help: false, projectPath, outputPath };
+  return {
+    command: args[0],
+    help: false,
+    projectPath,
+    ...(outputPath === undefined ? {} : { outputPath }),
+    ...(port === undefined ? {} : { port }),
+  };
+}
+
+function waitForShutdown(close: () => Promise<void>): Promise<void> {
+  return new Promise((resolve, reject) => {
+    let stopping = false;
+    const shutdown = () => {
+      if (stopping) return;
+      stopping = true;
+      process.off("SIGINT", shutdown);
+      process.off("SIGTERM", shutdown);
+      void close().then(resolve, reject);
+    };
+    process.once("SIGINT", shutdown);
+    process.once("SIGTERM", shutdown);
+  });
 }
 
 function writeDiagnostics(

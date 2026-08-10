@@ -206,7 +206,7 @@
         "An integration test starts the command against the fixture, fetches the UI and graph, and shuts it down"
       ],
       "priority": 13,
-      "passes": false,
+      "passes": true,
       "notes": "Do not expose repository source over a non-loopback interface by default."
     },
     {

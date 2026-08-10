@@ -12,6 +12,12 @@ export {
   type SolidityStructureAnalysis,
 } from "./analyze-solidity-structure.js";
 export { runCli, type CliIo } from "./run-cli.js";
+export {
+  startWatchServer,
+  WatchAnalysisError,
+  type WatchServer,
+  type WatchServerOptions,
+} from "./watch-server.js";
 
 export function serviceStatus(): string {
   const graph = createEmptyGraph("Code Visualizer");

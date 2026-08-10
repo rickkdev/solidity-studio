@@ -11,6 +11,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Progressive graph visibility should follow `contains` ancestry, with files initially expanded for architecture and contracts initially collapsed; filter edges to visible endpoints whenever nodes are hidden.
 - Source inspection reads repository-relative file contents from the validated graph's `metadata.sources` map and uses node line/column ranges for excerpts and highlights.
 - Graph filtering should be applied after progressive containment visibility, while search explicitly expands all `contains` ancestors before selecting and focusing a hidden result; security presets may bypass collapsed detail but should retain visible hierarchy.
+- The production watch service serves `apps/web/dist` on `127.0.0.1` and owns the existing `/api/graph` boundary; expose a programmatic close method so command signals and integration tests share the same shutdown path.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -94,4 +95,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Updated the repository graph component and responsive filter styling, expanded component and Chromium browser coverage, and updated PRD/progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (28 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (2 Chromium smoke tests passed), and `git diff --check` all passed.
 - Learnings for future iterations: Apply user filters after progressive graph visibility; search results should expand containment ancestors before viewport focus, while evidence presets can intentionally reveal matching collapsed nodes together with their hierarchy.
+---
+
+## 2026-08-10 18:25 CEST - US-013
+- What was implemented: Added `codevis watch [path]` with configurable port, loopback-only HTTP serving for the production web UI and initial validated graph, source evidence loading, startup URL/project reporting, and clean SIGINT/SIGTERM shutdown.
+- Files changed: Added the watch server module, extended CLI parsing/help/exports and integration coverage, documented watch usage, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (29 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (2 Chromium tests passed), `git diff --check`, and a built CLI watch/fetch/SIGTERM smoke test all passed.
+- Learnings for future iterations: Keep the live service bound explicitly to `127.0.0.1`; reuse `startWatchServer` and its close boundary when adding filesystem watching and browser update transport.
 ---

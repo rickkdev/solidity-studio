@@ -21,6 +21,15 @@ Start the minimal web UI at `http://localhost:5173`:
 npm run dev
 ```
 
+After building, launch the visualizer for a Solidity project on the loopback-only local service:
+
+```bash
+npm run build
+npm exec codevis -- watch ./path/to/project --port 4173
+```
+
+The command prints the local URL, serves the analyzed graph automatically, and stops cleanly with Ctrl-C.
+
 Run repository checks and production builds from the root:
 
 ```bash
