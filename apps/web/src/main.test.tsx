@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { cleanup, render, screen, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { App } from "./main";
 
 const graph = {
@@ -17,8 +17,8 @@ const graph = {
   ],
   edges: [
     { id: "contains", kind: "contains", source: "repo", target: "file", metadata: {} },
-    { id: "imports", kind: "imports", source: "file", target: "contract", metadata: {} },
-    { id: "inherits", kind: "inherits", source: "contract", target: "fn", metadata: {} },
+    { id: "file-contract", kind: "contains", source: "file", target: "contract", metadata: {} },
+    { id: "contract-fn", kind: "contains", source: "contract", target: "fn", metadata: {} },
     { id: "calls", kind: "calls", source: "fn", target: "modifier", metadata: {} },
     { id: "reads", kind: "reads", source: "fn", target: "event", metadata: {} },
     { id: "writes", kind: "writes", source: "fn", target: "finding", metadata: {} },
@@ -27,7 +27,7 @@ const graph = {
   metadata: {},
 };
 
-afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
+afterEach(() => { cleanup(); });
 
 describe("repository graph", () => {
   it("loads and renders fixture nodes, directed relationship styles, and viewport actions", async () => {
@@ -35,14 +35,33 @@ describe("repository graph", () => {
     render(<App />);
     expect(screen.getByText("Mapping repository…")).toBeInTheDocument();
     expect(await screen.findByLabelText("Repository graph for fixture")).toBeInTheDocument();
-    for (const label of ["Vault.sol", "Vault", "deposit", "onlyOwner", "Deposited", "testDeposit", "Review call"]) {
+    for (const label of ["Vault.sol", "Vault", "onlyOwner", "Deposited", "testDeposit", "Review call"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
     }
-    for (const relationship of ["imports", "inherits", "calls", "reads", "writes", "tests"]) {
-      expect(document.querySelector(`.edge--${relationship}`)).toBeInTheDocument();
-    }
+    expect(screen.queryByText("deposit")).not.toBeInTheDocument();
+    expect(document.querySelector(".react-flow__edge.edge--calls")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Fit graph" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reset view" })).toBeInTheDocument();
+  });
+
+  it("expands and collapses groups without leaving edges connected to hidden nodes", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
+    render(<App />);
+    await screen.findByText("Vault");
+
+    fireEvent.click(screen.getByLabelText("Expand Vault"));
+    expect(screen.getByText("deposit")).toBeInTheDocument();
+    expect(screen.getByText("7 relationships")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Fit expanded" })).toBeEnabled();
+
+    fireEvent.click(screen.getByLabelText("Collapse Vault"));
+    expect(screen.queryByText("deposit")).not.toBeInTheDocument();
+    expect(screen.getByText("2 relationships")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByLabelText("Collapse Vault.sol"));
+    expect(screen.queryByText("Vault")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText("Expand Vault.sol"));
+    expect(screen.getByText("Vault")).toBeInTheDocument();
   });
 
   it("shows an empty state", async () => {

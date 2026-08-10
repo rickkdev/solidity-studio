@@ -158,7 +158,7 @@
         "Component tests cover expand, collapse, and connected-edge behavior"
       ],
       "priority": 10,
-      "passes": false,
+      "passes": true,
       "notes": "This is the first defense against unusable hairball graphs; avoid rendering every node by default."
     },
     {

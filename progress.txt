@@ -8,6 +8,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Solidity relationship resolution should use compiler AST declaration IDs and normalized source-unit paths rather than matching symbol labels.
 - CLI commands should keep validated JSON on stdout and route progress plus source-linked compiler diagnostics to stderr.
 - The web client loads validated graph data from `/api/graph`; development and production smoke tests use the static fixture at that path until the watch service owns the endpoint.
+- Progressive graph visibility should follow `contains` ancestry, with files initially expanded for architecture and contracts initially collapsed; filter edges to visible endpoints whenever nodes are hidden.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -70,4 +71,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Rebuilt the web application UI and styles, added graph rendering and fixture data, added Vitest component tests and Playwright browser coverage, updated web dependencies/configuration, ignore rules, PRD, and progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (22 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (Chromium smoke test passed), and `git diff --check` all passed.
 - Learnings for future iterations: Keep `/api/graph` as the validated web/service boundary; React Flow nodes need measured container dimensions in DOM tests, while real viewport behavior remains covered by the Playwright smoke test.
+---
+
+## 2026-08-10 16:50 CEST - US-010
+- What was implemented: Added stable file and contract expansion state, a function-level collapsed initial view, visible-endpoint edge filtering, accessible expansion controls, and a fit-to-expanded-groups viewport action.
+- Files changed: Updated the repository graph component and styling, expanded component and Chromium smoke coverage, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (23 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (Chromium progressive-detail smoke test passed), and `git diff --check` all passed.
+- Learnings for future iterations: Derive progressive visibility from `contains` ancestors and filter relationships only after calculating the visible node set so no edge references a hidden endpoint.
 ---

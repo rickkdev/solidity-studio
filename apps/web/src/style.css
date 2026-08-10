@@ -21,8 +21,10 @@ h1 { margin:0; font-size:22px; letter-spacing:-.03em; }
 .node-label { display:flex; align-items:center; min-height:62px; }
 .node-label>span { align-self:stretch; display:grid; width:43px; place-items:center; border-right:1px solid #2b382f; background:color-mix(in srgb,var(--node-color) 9%,transparent); color:var(--node-color); font:700 17px ui-monospace,monospace; }
 .node-label div { min-width:0; padding:10px 12px; }
+.node-label div:nth-child(2) { flex:1; }
 .node-label small { display:block; margin-bottom:4px; color:var(--node-color); font:700 8px ui-monospace,monospace; letter-spacing:.13em; text-transform:uppercase; }
 .node-label strong { display:block; overflow:hidden; font-size:12px; text-overflow:ellipsis; white-space:nowrap; }
+.node-toggle { display:grid; flex:0 0 25px; height:25px; margin-right:9px; padding:0; place-items:center; border:1px solid color-mix(in srgb,var(--node-color) 40%,#26342c); border-radius:6px; background:transparent; color:var(--node-color); font:500 16px/1 ui-monospace,monospace; cursor:pointer; }
 .react-flow__edge-path { stroke:#58665e; stroke-width:1.4; }
 .react-flow__edge-text { fill:#829087; font:8px ui-monospace,monospace; }
 .react-flow__edge-textbg { fill:#0d1310; }
@@ -32,6 +34,7 @@ h1 { margin:0; font-size:22px; letter-spacing:-.03em; }
 .viewport-actions { position:absolute; z-index:5; top:14px; right:14px; display:flex; gap:6px; }
 .viewport-actions button { cursor:pointer; border:1px solid #34433a; border-radius:7px; padding:7px 10px; background:#121a16e8; color:#b9c6bd; font-size:10px; }
 .viewport-actions button:hover { border-color:#70a57e; color:#fff; }
+.viewport-actions button:disabled { cursor:not-allowed; opacity:.42; }
 .graph-legend { position:absolute; z-index:5; right:14px; bottom:14px; display:grid; grid-template-columns:auto auto; gap:7px 10px; padding:11px 13px; border:1px solid #29362f; border-radius:8px; background:#101713e8; color:#839087; font:9px ui-monospace,monospace; }
 .graph-legend strong { grid-column:1/-1; margin-bottom:3px; color:#d4ddd6; text-transform:uppercase; letter-spacing:.1em; }
 .graph-legend span { display:contents; }
