@@ -270,7 +270,7 @@
         "Integration and browser tests verify passing, failing, and unresolved result visualization"
       ],
       "priority": 17,
-      "passes": false,
+      "passes": true,
       "notes": "Runtime-observed relationships must look different from statically inferred relationships."
     },
     {

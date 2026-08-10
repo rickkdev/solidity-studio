@@ -21,6 +21,7 @@ export {
   type FoundryTestStatus,
   type RunFoundryTestsOptions,
 } from "./run-foundry-tests.js";
+export { addFoundryTests, applyFoundryResults, setTestsActive } from "./map-foundry-results.js";
 export {
   startWatchServer,
   WatchAnalysisError,

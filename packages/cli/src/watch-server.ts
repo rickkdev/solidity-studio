@@ -6,6 +6,8 @@ import { fileURLToPath } from "node:url";
 import { createStableNodeId, parseGraph, parseWorkEvent, serializeGraph, type Graph, type GraphNodeStatus, type WorkEvent, type WorkEventType } from "@codevis/shared";
 import { watch, type FSWatcher } from "chokidar";
 import { analyzeSolidityStructure, type SolidityDiagnostic } from "./analyze-solidity-structure.js";
+import { addFoundryTests, applyFoundryResults, setTestsActive } from "./map-foundry-results.js";
+import { runFoundryTests, type FoundryTestRun } from "./run-foundry-tests.js";
 
 const DEFAULT_WEB_ROOT = fileURLToPath(new URL("../../../apps/web/dist/", import.meta.url));
 
@@ -14,6 +16,7 @@ export interface WatchServerOptions {
   readonly webRoot?: string;
   readonly ignoredPaths?: readonly string[];
   readonly debounceMs?: number;
+  readonly testRunner?: (projectPath: string, filter?: string) => Promise<FoundryTestRun>;
 }
 
 export interface WatchServer {
@@ -54,7 +57,7 @@ export async function startWatchServer(
   const errors = analysis.diagnostics.filter(({ severity }) => severity === "error");
   if (errors.length > 0) throw new WatchAnalysisError(errors);
 
-  let graph = await graphFromAnalysis(projectPath, analysis);
+  let graph = addFoundryTests(await graphFromAnalysis(projectPath, analysis));
   const workEvents: WorkEvent[] = [];
   let eventSequence = 0;
   const addEvent = (type: WorkEventType, message: string, targetIds: readonly string[] = [], metadata: WorkEvent["metadata"] = {}) => {
@@ -75,6 +78,24 @@ export async function startWatchServer(
       workEvents.sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
       graph = withWorkEvents(graph, workEvents);
       broadcast(clients, graph);
+    }, async (filter) => {
+      const testIds = graph.nodes.filter(({ kind }) => kind === "test").map(({ id }) => id);
+      addEvent("command_started", filter ? `Running Foundry tests matching ${filter}` : "Running Foundry tests", testIds, { command: "forge test" });
+      graph = withWorkEvents(setTestsActive(graph), workEvents);
+      broadcast(clients, graph);
+      const run = await (options.testRunner ?? runFoundryTests)(projectPath, filter);
+      graph = applyFoundryResults(graph, run);
+      for (const diagnostic of run.diagnostics) {
+        const target = graph.nodes.find((node) => Array.isArray(node.metadata.diagnostics) && node.metadata.diagnostics.includes(diagnostic));
+        addEvent("finding_created", diagnostic, target ? [target.id] : [], { source: "foundry" });
+      }
+      for (const result of run.results) {
+        const target = graph.nodes.find((node) => node.kind === "test" && normalizeTestName(node.label) === normalizeTestName(result.name));
+        addEvent(result.status === "passed" ? "test_passed" : "test_failed", `${result.name}: ${result.status}${result.reason ? ` — ${result.reason}` : ""}`, target ? [target.id] : [], { suite: result.suite, durationMs: result.durationMs });
+      }
+      addEvent("work_completed", `Foundry completed with exit code ${run.exitCode}`, testIds, { command: "forge test", exitCode: run.exitCode });
+      broadcast(clients, graph);
+      return run;
     });
   });
   await listen(server, port);
@@ -104,7 +125,7 @@ export async function startWatchServer(
             graph = withStatuses(graph, changes, "failed", analysisErrors);
           } else {
             const next = await graphFromAnalysis(projectPath, nextAnalysis);
-            graph = mergeChangeStatuses(graph, next, changes);
+            graph = mergeChangeStatuses(graph, addFoundryTests(next), changes);
           }
         } catch (error) {
           graph = withStatuses(graph, changes, "failed", [{ severity: "error", message: error instanceof Error ? error.message : String(error) }]);
@@ -148,6 +169,7 @@ async function handleRequest(
   currentGraph: () => Graph,
   clients: Set<import("node:http").ServerResponse>,
   recordExternalEvent: (event: WorkEvent) => void,
+  runTests: (filter?: string) => Promise<FoundryTestRun>,
 ): Promise<void> {
   try {
     const requestUrl = request.url ?? "/";
@@ -162,6 +184,18 @@ async function handleRequest(
         const event = parseWorkEvent(JSON.parse(await readRequestBody(request)) as unknown);
         recordExternalEvent(event);
         response.writeHead(202, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(event));
+      } catch (error) {
+        response.writeHead(400, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
+      }
+      return;
+    }
+    if (pathname === "/api/tests" && request.method === "POST") {
+      try {
+        const body = await readRequestBody(request);
+        const payload = body ? JSON.parse(body) as { filter?: unknown } : {};
+        if (payload.filter !== undefined && typeof payload.filter !== "string") throw new Error("filter must be a string");
+        const run = await runTests(payload.filter as string | undefined);
+        response.writeHead(run.exitCode === 0 ? 200 : 422, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(run));
       } catch (error) {
         response.writeHead(400, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify({ error: error instanceof Error ? error.message : String(error) }));
       }
@@ -289,4 +323,8 @@ function closeServer(server: Server): Promise<void> {
   return new Promise((resolve, reject) => {
     server.close((error) => error ? reject(error) : resolve());
   });
+}
+
+function normalizeTestName(name: string): string {
+  return name.replace(/\(.*$/, "");
 }

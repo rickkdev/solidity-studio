@@ -15,6 +15,8 @@ h1 { margin:0; font-size:22px; letter-spacing:-.03em; }
 .graph-meta__label { color:#708077; font:700 9px ui-monospace,monospace; letter-spacing:.14em; text-transform:uppercase; }
 .graph-meta strong { font-size:13px; }
 .graph-counts { display:flex; gap:18px; color:#75857c; font:11px ui-monospace,monospace; }
+.graph-counts button{border:1px solid #365846;border-radius:5px;background:#12251b;color:#9ee6bc;padding:5px 9px;cursor:pointer}.graph-counts button:disabled{opacity:.55;cursor:wait}.test-run-error{margin:0;padding:8px 16px;color:#ff9d9d;background:#2b1414}
+.react-flow__edge.edge--runtime path{stroke-width:3;stroke-dasharray:8 4;animation:runtime-edge 1s linear infinite}@keyframes runtime-edge{to{stroke-dashoffset:-12}}
 .graph-filters { position:relative; z-index:10; display:flex; align-items:center; gap:8px; padding:9px 18px; border-bottom:1px solid #253029; background:#0c120f; }
 .graph-search { position:relative; width:min(280px,30vw); }
 .graph-search>label { position:absolute; width:1px; height:1px; overflow:hidden; clip:rect(0,0,0,0); }

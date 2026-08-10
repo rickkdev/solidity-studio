@@ -30,6 +30,8 @@ export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
   const [edgeKinds, setEdgeKinds] = useState<ReadonlySet<GraphEdgeKind>>(() => new Set(graphEdgeKinds));
   const [securityOnly, setSecurityOnly] = useState(false);
   const [focusId, setFocusId] = useState<string>();
+  const [testsRunning, setTestsRunning] = useState(false);
+  const [testError, setTestError] = useState<string>();
   const structuralIds = useMemo(() => visibleNodeIds(graph, expanded), [graph, expanded]);
   const visibleIds = useMemo(() => filteredNodeIds(graph, structuralIds, nodeKinds, securityOnly), [graph, structuralIds, nodeKinds, securityOnly]);
   const searchResults = useMemo(() => searchNodes(graph, query), [graph, query]);
@@ -61,8 +63,16 @@ export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
     <section className="graph-panel" aria-label={`Repository graph for ${graph.repository}`}>
       <div className="graph-meta">
         <div><span className="graph-meta__label">Repository</span><strong>{graph.repository}</strong></div>
-        <div className="graph-counts"><span>{nodes.length} nodes</span><span>{edges.length} relationships</span></div>
+        <div className="graph-counts"><span>{nodes.length} nodes</span><span>{edges.length} relationships</span><button type="button" disabled={testsRunning} onClick={async () => {
+          setTestsRunning(true); setTestError(undefined);
+          try {
+            const response = await fetch("/api/tests", { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+            if (!response.ok && response.status !== 422) throw new Error(`Test service returned ${response.status}`);
+          } catch (error) { setTestError(error instanceof Error ? error.message : String(error)); }
+          finally { setTestsRunning(false); }
+        }}>{testsRunning ? "Running tests…" : "Run Foundry tests"}</button></div>
       </div>
+      {testError && <p className="test-run-error" role="alert">{testError}</p>}
       <GraphFilters query={query} onQuery={setQuery} results={searchResults} onResult={revealSearchResult}
         nodeKinds={nodeKinds} onNodeKinds={setNodeKinds} edgeKinds={edgeKinds} onEdgeKinds={setEdgeKinds}
         securityOnly={securityOnly} onSecurityOnly={setSecurityOnly} onClear={clearFilters} />
@@ -253,7 +263,7 @@ function toFlowElements(
   }
   const edges: Edge[] = graph.edges.filter((edge) => edgeKinds.has(edge.kind) && visibleIds.has(edge.source) && visibleIds.has(edge.target)).map((edge) => ({
     id: edge.id, source: edge.source, target: edge.target, label: relationshipLabel[edge.kind],
-    className: `code-edge edge--${edge.kind}`, markerEnd: { type: MarkerType.ArrowClosed },
+    className: `code-edge edge--${edge.kind}${edge.metadata.runtimeObserved === true ? " edge--runtime" : " edge--static"}`, markerEnd: { type: MarkerType.ArrowClosed },
   }));
   nodes.forEach((node) => {
     const kind = node.data.kind as GraphNodeKind;

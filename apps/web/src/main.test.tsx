@@ -42,6 +42,16 @@ describe("repository graph", () => {
     expect(document.querySelector(".react-flow__edge.edge--calls")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Fit graph" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reset view" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Run Foundry tests" })).toBeInTheDocument();
+  });
+
+  it("starts Foundry tests from the graph", async () => {
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => graph }).mockResolvedValueOnce({ ok: true, status: 200 });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    await screen.findByLabelText("Repository graph for fixture");
+    fireEvent.click(screen.getByRole("button", { name: "Run Foundry tests" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tests", expect.objectContaining({ method: "POST" })));
   });
 
   it("expands and collapses groups without leaving edges connected to hidden nodes", async () => {

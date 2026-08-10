@@ -81,7 +81,13 @@ describe("codevis watch", () => {
   it("serves the visualizer and initial validated graph, then closes cleanly", async () => {
     const webRoot = await mkdtemp(path.join(tmpdir(), "codevis-web-"));
     await writeFile(path.join(webRoot, "index.html"), "<!doctype html><title>Code Visualizer</title>");
-    const service = await startWatchServer(fixtureRoot, { port: 0, webRoot });
+    const service = await startWatchServer(fixtureRoot, { port: 0, webRoot, testRunner: async (projectPath) => ({
+      projectPath, results: [
+        { suite: "test/Vault.t.sol:VaultTest", name: "testOwnerIsDeployingTest()", status: "passed", durationMs: 2 },
+        { suite: "test/Vault.t.sol:VaultTest", name: "testIntentionalFailure()", status: "failed", durationMs: 3, reason: "assertion failed" },
+        { suite: "test/Unknown.t.sol:UnknownTest", name: "testUnknown()", status: "failed", durationMs: 1, reason: "unresolved" },
+      ], diagnostics: ["unresolved diagnostic"], exitCode: 1,
+    }) });
     try {
       expect(service.url).toMatch(/^http:\/\/127\.0\.0\.1:\d+$/);
       expect(service.projectPath).toBe(path.resolve(fixtureRoot));
@@ -94,6 +100,8 @@ describe("codevis watch", () => {
       expect(graphResponse.status).toBe(200);
       const graph = parseGraph(await graphResponse.json());
       expect(graph.nodes.some(({ label }) => label === "Vault")).toBe(true);
+      expect(graph.nodes.some(({ kind, label }) => kind === "test" && label === "testOwnerIsDeployingTest")).toBe(true);
+      expect(graph.edges.some(({ kind, metadata }) => kind === "tests" && metadata.runtimeObserved === false)).toBe(true);
       expect(graph.metadata.sources).toBeTypeOf("object");
       expect(graph.metadata.workEvents).toEqual(expect.arrayContaining([
         expect.objectContaining({ type: "plan_created" }),
@@ -109,6 +117,20 @@ describe("codevis watch", () => {
       expect(accepted.status).toBe(202);
       const updated = parseGraph(await (await fetch(`${service.url}/api/graph`)).json());
       expect(updated.metadata.workEvents).toEqual(expect.arrayContaining([external]));
+
+      const testResponse = await fetch(`${service.url}/api/tests`, { method: "POST", headers: { "content-type": "application/json" }, body: "{}" });
+      expect(testResponse.status).toBe(422);
+      const tested = parseGraph(await (await fetch(`${service.url}/api/graph`)).json());
+      expect(tested.nodes).toEqual(expect.arrayContaining([
+        expect.objectContaining({ kind: "test", label: "testOwnerIsDeployingTest", status: "passed" }),
+        expect.objectContaining({ kind: "test", label: "testIntentionalFailure", status: "failed", metadata: expect.objectContaining({ failureMessage: "assertion failed" }) }),
+        expect.objectContaining({ kind: "test", label: "testUnknown()", metadata: expect.objectContaining({ unresolvedTarget: true }) }),
+      ]));
+      expect(tested.edges.some(({ kind, metadata }) => kind === "tests" && metadata.runtimeObserved === true)).toBe(true);
+      expect(tested.metadata.workEvents).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: "command_started" }), expect.objectContaining({ type: "test_passed" }),
+        expect.objectContaining({ type: "test_failed", message: expect.stringContaining("assertion failed") }),
+      ]));
     } finally {
       await service.close();
       await rm(webRoot, { recursive: true, force: true });
