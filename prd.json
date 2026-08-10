@@ -174,7 +174,7 @@
         "Component tests cover source-backed and source-less node inspection"
       ],
       "priority": 11,
-      "passes": false,
+      "passes": true,
       "notes": "Reading source is secondary to the graph but must always be one selection away."
     },
     {

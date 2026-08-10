@@ -9,6 +9,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - CLI commands should keep validated JSON on stdout and route progress plus source-linked compiler diagnostics to stderr.
 - The web client loads validated graph data from `/api/graph`; development and production smoke tests use the static fixture at that path until the watch service owns the endpoint.
 - Progressive graph visibility should follow `contains` ancestry, with files initially expanded for architecture and contracts initially collapsed; filter edges to visible endpoints whenever nodes are hidden.
+- Source inspection reads repository-relative file contents from the validated graph's `metadata.sources` map and uses node line/column ranges for excerpts and highlights.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -78,4 +79,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Updated the repository graph component and styling, expanded component and Chromium smoke coverage, and updated PRD/progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (23 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (Chromium progressive-detail smoke test passed), and `git diff --check` all passed.
 - Learnings for future iterations: Derive progressive visibility from `contains` ancestors and filter relationships only after calculating the visible node set so no edge references a hidden endpoint.
+---
+
+## 2026-08-10 18:18 CEST - US-011
+- What was implemented: Added node selection and a responsive evidence panel with kind, status, metadata, incoming/outgoing relationships, repository-relative locations, highlighted line-numbered source excerpts, copy-location support, and explicit handling for source-less nodes.
+- Files changed: Updated the repository graph component and styling, enriched the development graph with source evidence, expanded component tests, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (25 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (Chromium smoke test passed), and `git diff --check` all passed.
+- Learnings for future iterations: Keep source contents keyed by normalized repository-relative paths in `graph.metadata.sources`; source positions use exclusive end columns, which makes precise inline highlighting deterministic.
 ---

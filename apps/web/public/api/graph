@@ -6,7 +6,7 @@
     { "id": "src", "kind": "directory", "label": "src", "status": "idle", "metadata": {} },
     { "id": "vault-file", "kind": "file", "label": "Vault.sol", "status": "idle", "metadata": {} },
     { "id": "vault", "kind": "contract", "label": "Vault", "status": "idle", "metadata": { "contractKind": "contract" } },
-    { "id": "deposit", "kind": "function", "label": "deposit", "status": "idle", "metadata": { "visibility": "external", "payable": true, "externalCall": true } },
+    { "id": "deposit", "kind": "function", "label": "deposit", "status": "idle", "source": { "file": "src/Vault.sol", "start": { "offset": 19, "line": 2, "column": 3 }, "end": { "offset": 60, "line": 2, "column": 44 } }, "metadata": { "visibility": "external", "payable": true, "externalCall": true } },
     { "id": "owner-only", "kind": "modifier", "label": "onlyOwner", "status": "idle", "metadata": {} },
     { "id": "deposited", "kind": "event", "label": "Deposited", "status": "idle", "metadata": {} },
     { "id": "vault-test", "kind": "test", "label": "testDeposit", "status": "passed", "metadata": {} },
@@ -23,5 +23,5 @@
     { "id": "e8", "kind": "tests", "source": "vault-test", "target": "deposit", "metadata": {} },
     { "id": "e9", "kind": "modifies", "source": "finding", "target": "deposit", "metadata": {} }
   ],
-  "metadata": { "fixture": true }
+  "metadata": { "fixture": true, "sources": { "src/Vault.sol": "contract Vault {\n  function deposit() external payable { emit Deposited(msg.sender); }\n}" } }
 }
