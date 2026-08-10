@@ -22,7 +22,7 @@ const relationshipLabel: Record<GraphEdgeKind, string> = {
   writes: "writes", applies_modifier: "modifier", tests: "tests", modifies: "modifies",
 };
 
-export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
+export function RepositoryGraph({ graph, liveDisconnected = false, onReconnect }: { readonly graph: Graph; readonly liveDisconnected?: boolean; readonly onReconnect?: () => void }) {
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => initialExpansion(graph));
   const [selectedId, setSelectedId] = useState<string>();
   const [query, setQuery] = useState("");
@@ -61,6 +61,8 @@ export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
   };
   return (
     <section className="graph-panel" aria-label={`Repository graph for ${graph.repository}`}>
+      {liveDisconnected && <div className="recovery-banner" role="alert">Live updates disconnected. The current graph is still available.<button type="button" onClick={onReconnect}>Reconnect</button></div>}
+      {hasCompilerErrors(graph) && <div className="recovery-banner recovery-banner--error" role="alert">Compiler errors detected. Fix the highlighted Solidity source and save it to re-analyze.<button type="button" onClick={onReconnect}>Retry now</button></div>}
       <div className="graph-meta">
         <div><span className="graph-meta__label">Repository</span><strong>{graph.repository}</strong></div>
         <div className="graph-counts"><span>{nodes.length} nodes</span><span>{edges.length} relationships</span><button type="button" disabled={testsRunning} onClick={async () => {
@@ -72,7 +74,7 @@ export function RepositoryGraph({ graph }: { readonly graph: Graph }) {
           finally { setTestsRunning(false); }
         }}>{testsRunning ? "Running tests…" : "Run Foundry tests"}</button></div>
       </div>
-      {testError && <p className="test-run-error" role="alert">{testError}</p>}
+      {testError && <div className="test-run-error" role="alert">{testError}. Verify Foundry is installed and <code>forge</code> is on PATH.<button type="button" onClick={() => setTestError(undefined)}>Dismiss and retry</button></div>}
       <GraphFilters query={query} onQuery={setQuery} results={searchResults} onResult={revealSearchResult}
         nodeKinds={nodeKinds} onNodeKinds={setNodeKinds} edgeKinds={edgeKinds} onEdgeKinds={setEdgeKinds}
         securityOnly={securityOnly} onSecurityOnly={setSecurityOnly} onClear={clearFilters} />
@@ -164,12 +166,25 @@ function ViewportActions({ graph, expanded, visibleIds }: { readonly graph: Grap
 function GraphLegend() {
   return (
     <aside className="graph-legend" aria-label="Graph legend">
-      <strong>Relationship</strong>
+      <strong>Nodes</strong>
+      <span><i className="legend-node legend-node--file" />file / contract / function</span>
+      <span><i className="legend-node legend-node--test" />test / finding</span>
+      <strong>Edge evidence</strong>
       {(["contains", "imports", "inherits", "calls", "reads", "writes", "tests"] as GraphEdgeKind[]).map((kind) => (
         <span key={kind}><i className={`legend-line edge--${kind}`} />{relationshipLabel[kind]}</span>
       ))}
+      <span><i className="legend-line legend-line--static" />static evidence</span>
+      <span><i className="legend-line legend-line--runtime" />runtime observed</span>
+      <strong>Statuses</strong>
+      <span><i className="legend-status legend-status--active" />active</span>
+      <span><i className="legend-status legend-status--passed" />passed</span>
+      <span><i className="legend-status legend-status--failed" />failed / warning / deleted</span>
     </aside>
   );
+}
+
+function hasCompilerErrors(graph: Graph): boolean {
+  return Array.isArray(graph.metadata.diagnostics) && graph.metadata.diagnostics.some((item) => typeof item === "object" && item !== null && (item as { severity?: unknown }).severity === "error");
 }
 
 function NodeInspector({ graph, node, onClose }: { readonly graph: Graph; readonly node: GraphNode; readonly onClose: () => void }) {

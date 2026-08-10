@@ -134,3 +134,10 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Quality checks run: `npm run typecheck`, `npm test` (38 workspace tests passed; one filesystem-watch timing retry was required), `npm run build`, `npm run test:browser --workspace @codevis/web` (3 Chromium tests passed), and `git diff --check` all passed.
 - Learnings for future iterations: Represent static versus runtime test evidence in edge metadata; keep unmatched Foundry results as source-less test nodes and unmatched diagnostics as timeline findings so incomplete resolution remains inspectable.
 ---
+
+## 2026-08-10 18:46 CEST - US-018
+- What was implemented: Completed the Solidity-first MVP handoff with analyze/watch/test and fixture-demo documentation, a comprehensive graph legend, actionable recovery controls for empty/service/compiler/Foundry/live-session failures, and documented root lint and end-to-end checks.
+- Files changed: Updated README and workspace scripts, enhanced the web loading/live/recovery states and graph legend, expanded component coverage, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm run lint`, `npm test` (39 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (3 Chromium tests passed), `npm run test:e2e`, and `git diff --check` all passed.
+- Learnings for future iterations: Keep recovery actions at the state boundary that failed: reload graph/SSE state from the app, re-run Foundry from the graph, and let compiler recovery remain driven by save-triggered watch analysis; keep the visual legend explicit about evidence provenance and status semantics.
+---

@@ -43,6 +43,7 @@ describe("repository graph", () => {
     expect(screen.getByRole("button", { name: "Fit graph" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Reset view" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Run Foundry tests" })).toBeInTheDocument();
+    expect(screen.getByLabelText("Graph legend")).toHaveTextContent("static evidenceruntime observed");
   });
 
   it("starts Foundry tests from the graph", async () => {
@@ -52,6 +53,18 @@ describe("repository graph", () => {
     await screen.findByLabelText("Repository graph for fixture");
     fireEvent.click(screen.getByRole("button", { name: "Run Foundry tests" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tests", expect.objectContaining({ method: "POST" })));
+  });
+
+  it("offers recovery for missing Foundry and compiler errors", async () => {
+    const brokenGraph = { ...graph, metadata: { ...graph.metadata, diagnostics: [{ severity: "error", message: "ParserError" }] } };
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => brokenGraph }).mockResolvedValueOnce({ ok: false, status: 400 });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    expect(await screen.findByText(/Compiler errors detected/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry now" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Run Foundry tests" }));
+    expect(await screen.findByText(/Verify Foundry is installed/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Dismiss and retry" })).toBeInTheDocument();
   });
 
   it("expands and collapses groups without leaving edges connected to hidden nodes", async () => {
@@ -158,12 +171,14 @@ describe("repository graph", () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ...graph, nodes: [], edges: [] }) }));
     render(<App />);
     expect(await screen.findByText("No graph nodes yet")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry analysis" })).toBeInTheDocument();
   });
 
   it("shows service and validation failures as analysis errors", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 503 }));
     render(<App />);
     expect(await screen.findByRole("alert")).toHaveTextContent("Graph service returned 503");
+    expect(screen.getByRole("button", { name: "Retry analysis" })).toBeInTheDocument();
     cleanup();
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => ({ invalid: true }) }));
     render(<App />);

@@ -6,6 +6,7 @@
   "scripts": {
     "build": "tsc -b && vite build",
     "dev": "vite",
+    "lint": "tsc -b --pretty false",
     "preview": "vite preview",
     "test": "vitest run --passWithNoTests",
     "test:browser": "playwright test",

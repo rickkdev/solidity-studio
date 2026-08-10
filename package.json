@@ -10,7 +10,9 @@
   "scripts": {
     "build": "npm run build --workspaces --if-present",
     "dev": "npm run dev --workspace @codevis/web",
+    "lint": "npm run lint --workspaces --if-present",
     "test": "npm run test --workspaces --if-present",
+    "test:e2e": "npm run build && npm run test:browser --workspace @codevis/web",
     "typecheck": "npm run typecheck --workspaces --if-present"
   },
   "engines": {
