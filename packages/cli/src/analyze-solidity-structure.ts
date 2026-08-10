@@ -12,6 +12,7 @@ import {
 import { discoverSolidityFiles, type DiscoverSolidityFilesOptions } from "./discover-solidity-files.js";
 
 interface AstNode {
+  readonly [key: string]: unknown;
   readonly id?: number;
   readonly nodeType?: string;
   readonly name?: string;
@@ -103,13 +104,144 @@ export async function analyzeSolidityStructure(
     if (ast) addDependencyEdges(ast.nodes ?? [], file, nodes, edges, astNodeIds);
   }
 
+  const behaviorDiagnostics: SolidityDiagnostic[] = [];
+  for (const file of files) {
+    const ast = output.sources?.[file]?.ast;
+    if (ast) addBehaviorEdges(ast, nodes, edges, astNodeIds, behaviorDiagnostics);
+  }
+
   return {
     compilerVersion: solc.version(),
     files,
     nodes,
     edges,
-    diagnostics: (output.errors ?? []).map((diagnostic) => mapDiagnostic(diagnostic, sourceTexts)),
+    diagnostics: [
+      ...(output.errors ?? []).map((diagnostic) => mapDiagnostic(diagnostic, sourceTexts)),
+      ...behaviorDiagnostics,
+    ],
   };
+}
+
+
+function addBehaviorEdges(
+  ast: AstNode,
+  nodes: GraphNode[],
+  edges: GraphEdge[],
+  astNodeIds: Map<number, string>,
+  diagnostics: SolidityDiagnostic[],
+): void {
+  walkAst(ast, (candidate) => {
+    if (candidate.nodeType !== "FunctionDefinition" || candidate.id === undefined) return;
+    const functionId = astNodeIds.get(candidate.id);
+    if (!functionId) return;
+
+    let hasExternalCalls = false;
+    let sendsValue = false;
+    const unresolvedCalls = new Set<string>();
+    walkAst(candidate, (node, parent, key) => {
+      if (node.nodeType === "ModifierInvocation") {
+        const modifierName = asAstNode(node.modifierName);
+        const target = modifierName?.referencedDeclaration === undefined
+          ? undefined
+          : astNodeIds.get(modifierName.referencedDeclaration);
+        if (target) addEdge(edges, "applies_modifier", functionId, target);
+      }
+
+      if (node.nodeType === "FunctionCall") {
+        const expression = asAstNode(node.expression);
+        const callable = expression?.nodeType === "FunctionCallOptions"
+          ? asAstNode(expression.expression)
+          : expression;
+        const declaration = callable?.referencedDeclaration;
+        const target = declaration === undefined ? undefined : astNodeIds.get(declaration);
+        if (target) addEdge(edges, "calls", functionId, target);
+
+        if (callable?.nodeType === "MemberAccess") {
+          hasExternalCalls = true;
+          if (!target) unresolvedCalls.add(String(callable.memberName ?? "external call"));
+        }
+        if (expression?.nodeType === "FunctionCallOptions") {
+          const names = Array.isArray(expression.names) ? expression.names : [];
+          if (names.includes("value")) sendsValue = true;
+        }
+      }
+
+      if (node.nodeType === "Identifier" && node.referencedDeclaration !== undefined) {
+        const target = astNodeIds.get(node.referencedDeclaration);
+        const targetNode = target ? nodes.find(({ id }) => id === target) : undefined;
+        if (!target || targetNode?.kind !== "state_variable") return;
+        const access = stateAccessFor(parent, key);
+        if (access.read) addEdge(edges, "reads", functionId, target);
+        if (access.write) addEdge(edges, "writes", functionId, target);
+      }
+    });
+
+    const index = nodes.findIndex(({ id }) => id === functionId);
+    if (index >= 0) {
+      const current = nodes[index]!;
+      nodes[index] = {
+        ...current,
+        metadata: {
+          ...current.metadata,
+          hasExternalCalls,
+          sendsValue,
+          unresolvedCalls: [...unresolvedCalls].sort(),
+        },
+      };
+    }
+    for (const call of unresolvedCalls) {
+      const source = nodes.find(({ id }) => id === functionId)?.source;
+      diagnostics.push({
+        severity: "info",
+        message: `Unresolved external call '${call}' in ${currentFunctionLabel(nodes, functionId)}`,
+        ...(source ? { source } : {}),
+      });
+    }
+  });
+}
+
+function currentFunctionLabel(nodes: readonly GraphNode[], id: string): string {
+  return nodes.find((node) => node.id === id)?.label ?? id;
+}
+
+function stateAccessFor(parent: AstNode | undefined, key: string | undefined): { read: boolean; write: boolean } {
+  let ancestor = parent;
+  let childKey = key;
+  while (ancestor && (ancestor.nodeType === "IndexAccess" || ancestor.nodeType === "MemberAccess")) {
+    if (childKey !== "baseExpression" && childKey !== "expression") break;
+    const relation = astParentRelations.get(ancestor);
+    ancestor = relation?.parent;
+    childKey = relation?.key;
+  }
+  if (ancestor?.nodeType === "Assignment" && childKey === "leftHandSide") {
+    return { read: ancestor.operator !== "=", write: true };
+  }
+  if (ancestor?.nodeType === "UnaryOperation" && childKey === "subExpression") {
+    const writes = ancestor.operator === "++" || ancestor.operator === "--" || ancestor.operator === "delete";
+    return { read: ancestor.operator !== "delete", write: writes };
+  }
+  return { read: true, write: false };
+}
+
+const astParentRelations = new WeakMap<AstNode, { parent: AstNode; key: string }>();
+
+function walkAst(node: AstNode, visit: (node: AstNode, parent?: AstNode, key?: string) => void, parent?: AstNode, key?: string): void {
+  if (parent && key) astParentRelations.set(node, { parent, key });
+  visit(node, parent, key);
+  for (const [childKey, value] of Object.entries(node)) {
+    if (isAstNode(value)) walkAst(value, visit, node, childKey);
+    else if (Array.isArray(value)) {
+      for (const child of value) if (isAstNode(child)) walkAst(child, visit, node, childKey);
+    }
+  }
+}
+
+function isAstNode(value: unknown): value is AstNode {
+  return typeof value === "object" && value !== null && typeof (value as { nodeType?: unknown }).nodeType === "string";
+}
+
+function asAstNode(value: unknown): AstNode | undefined {
+  return isAstNode(value) ? value : undefined;
 }
 
 function visitNodes(astNodes: readonly AstNode[], file: string, text: string, nodes: GraphNode[], edges: GraphEdge[], astNodeIds: Map<number, string>, parentId: string): void {

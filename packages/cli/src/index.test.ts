@@ -128,6 +128,41 @@ describe("analyzeSolidityStructure", () => {
     expect(new Set(first.edges.map(({ id }) => id)).size).toBe(first.edges.length);
   });
 
+  it("maps function calls, state access, modifiers, and value-sending behavior", async () => {
+    const analysis = await analyzeSolidityStructure(fixtureRoot);
+    const nodesById = new Map(analysis.nodes.map((node) => [node.id, node]));
+    const relationships = analysis.edges.map((edge) => ({
+      kind: edge.kind,
+      source: nodesById.get(edge.source)?.label,
+      target: nodesById.get(edge.target)?.label,
+    }));
+
+    expect(relationships).toEqual(expect.arrayContaining([
+      { kind: "calls", source: "withdraw", target: "_debit" },
+      { kind: "calls", source: "withdraw", target: "notify" },
+      { kind: "calls", source: "_debit", target: "balanceOf" },
+      { kind: "reads", source: "deposit", target: "balances" },
+      { kind: "writes", source: "deposit", target: "balances" },
+      { kind: "reads", source: "withdraw", target: "notifier" },
+      { kind: "writes", source: "_debit", target: "balances" },
+      { kind: "applies_modifier", source: "withdraw", target: "onlyOwner" },
+    ]));
+
+    const functions = analysis.nodes.filter(({ kind }) => kind === "function");
+    expect(functions.find(({ label }) => label === "withdraw")?.metadata).toMatchObject({
+      hasExternalCalls: true,
+      sendsValue: true,
+      unresolvedCalls: ["call"],
+    });
+    expect(functions.find(({ label }) => label === "deposit")?.metadata).toMatchObject({
+      hasExternalCalls: false,
+      sendsValue: false,
+    });
+    expect(analysis.diagnostics).toEqual(expect.arrayContaining([
+      expect.objectContaining({ severity: "info", message: expect.stringContaining("Unresolved external call 'call' in withdraw") }),
+    ]));
+  });
+
   it("preserves compiler diagnostics with source locations", async () => {
     const project = await mkdtemp(path.join(tmpdir(), "codevis-parser-"));
     try {

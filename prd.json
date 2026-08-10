@@ -110,7 +110,7 @@
         "Automated tests verify the fixture's calls, reads, writes, modifier usage, and value-related metadata"
       ],
       "priority": 7,
-      "passes": false,
+      "passes": true,
       "notes": "Static analysis is evidence, not proof of runtime behavior. The UI must later label it accordingly."
     },
     {
