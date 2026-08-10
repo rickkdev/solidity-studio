@@ -11,6 +11,7 @@ export {
   type SolidityDiagnostic,
   type SolidityStructureAnalysis,
 } from "./analyze-solidity-structure.js";
+export { runCli, type CliIo } from "./run-cli.js";
 
 export function serviceStatus(): string {
   const graph = createEmptyGraph("Code Visualizer");
@@ -18,5 +19,6 @@ export function serviceStatus(): string {
 }
 
 if (process.argv[1] === new URL(import.meta.url).pathname) {
-  console.log(serviceStatus());
+  const { runCli } = await import("./run-cli.js");
+  process.exitCode = await runCli(process.argv.slice(2));
 }

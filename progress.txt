@@ -6,6 +6,7 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - The npm workspaces are ordered shared, CLI, then web so production builds make shared package artifacts available to downstream packages.
 - Development type checks resolve `@codevis/shared` directly to its TypeScript source; CLI production builds resolve the already-built declaration output.
 - Solidity relationship resolution should use compiler AST declaration IDs and normalized source-unit paths rather than matching symbol labels.
+- CLI commands should keep validated JSON on stdout and route progress plus source-linked compiler diagnostics to stderr.
 
 ## 2026-08-10 16:16 CEST - US-001
 - What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
@@ -54,4 +55,11 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Files changed: Updated `packages/cli/src/analyze-solidity-structure.ts`, expanded `packages/cli/src/index.test.ts`, and updated PRD/progress tracking.
 - Quality checks run: `npm run typecheck`, `npm test` (16 workspace tests passed), `npm run build`, and `git diff --check` all passed.
 - Learnings for future iterations: Traverse expression ancestry to classify compound state assignments as both reads and writes, and resolve behavior relationships exclusively through compiler declaration IDs; preserve unresolved low-level calls as evidence metadata and diagnostics.
+---
+
+## 2026-08-10 16:41 CEST - US-008
+- What was implemented: Added the `codevis analyze [path]` shell command with current-directory defaults, validated JSON output to stdout or a requested file, stderr-only progress and source-linked diagnostics, documented help, and reliable exit codes for input and compiler failures.
+- Files changed: Added `packages/cli/src/run-cli.ts`, updated the CLI entry point and integration coverage, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (19 workspace tests passed), `npm run build`, `git diff --check`, executable `--help`, and a built CLI fixture-analysis smoke test all passed.
+- Learnings for future iterations: Keep stdout reserved for machine-readable graph payloads; use the exported `runCli` boundary for deterministic command tests while smoke-testing the built executable for bin wiring.
 ---

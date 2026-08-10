@@ -6,9 +6,11 @@ import { fileURLToPath } from "node:url";
 import {
   analyzeSolidityStructure,
   discoverSolidityFiles,
+  runCli,
   serviceStatus,
   SolidityDiscoveryError,
 } from "./index.js";
+import { parseGraph } from "@codevis/shared";
 
 const fixtureRoot = fileURLToPath(
   new URL("../test/fixtures/solidity-project/", import.meta.url),
@@ -17,6 +19,69 @@ const fixtureRoot = fileURLToPath(
 describe("serviceStatus", () => {
   it("reports that the service foundation is ready", () => {
     expect(serviceStatus()).toBe("Code Visualizer local service ready");
+  });
+});
+
+describe("codevis analyze", () => {
+  function captureIo() {
+    let stdout = "";
+    let stderr = "";
+    return {
+      io: {
+        stdout: { write: (chunk: string | Uint8Array) => { stdout += chunk.toString(); return true; } },
+        stderr: { write: (chunk: string | Uint8Array) => { stderr += chunk.toString(); return true; } },
+      },
+      output: () => ({ stdout, stderr }),
+    };
+  }
+
+  it("analyzes the fixture and keeps stdout machine-readable", async () => {
+    const capture = captureIo();
+    await expect(runCli(["analyze", fixtureRoot], capture.io)).resolves.toBe(0);
+    const output = capture.output();
+    const graph = parseGraph(JSON.parse(output.stdout));
+
+    expect(graph.repository).toBe(path.resolve(fixtureRoot));
+    expect(graph.nodes.some(({ label }) => label === "Vault")).toBe(true);
+    expect(output.stderr).toContain("Analyzing Solidity project:");
+    expect(output.stderr).toContain("Analysis complete:");
+  });
+
+  it("writes output files and documents command usage", async () => {
+    const directory = await mkdtemp(path.join(tmpdir(), "codevis-cli-"));
+    try {
+      const outputPath = path.join(directory, "graph.json");
+      const capture = captureIo();
+      expect(await runCli(["analyze", fixtureRoot, "--output", outputPath], capture.io)).toBe(0);
+      expect(capture.output().stdout).toBe("");
+      const outputGraph = JSON.parse(await readFile(outputPath, "utf8"));
+      expect(() => parseGraph(outputGraph)).not.toThrow();
+
+      const help = captureIo();
+      expect(await runCli(["--help"], help.io)).toBe(0);
+      expect(help.output().stdout).toContain("Usage: codevis analyze [path] [options]");
+      expect(help.output().stdout).toContain("--output <file>");
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
+
+  it("returns non-zero with actionable errors for invalid input and analysis failure", async () => {
+    const missing = captureIo();
+    expect(await runCli(["analyze", path.join(fixtureRoot, "missing")], missing.io)).toBe(1);
+    expect(missing.output().stderr).toMatch(/codevis: Cannot access Solidity project directory/);
+
+    const project = await mkdtemp(path.join(tmpdir(), "codevis-cli-broken-"));
+    try {
+      await writeFile(path.join(project, "Broken.sol"), "contract Broken { function nope( }");
+      const broken = captureIo();
+      expect(await runCli(["analyze", project], broken.io)).toBe(1);
+      expect(broken.output().stdout).toBe("");
+      expect(broken.output().stderr).toMatch(/Broken\.sol:1:\d+: error: ParserError/);
+      expect(broken.output().stderr).toContain("Analysis failed with 1 compiler error.");
+    } finally {
+      await rm(project, { recursive: true, force: true });
+    }
   });
 });
 

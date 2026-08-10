@@ -126,7 +126,7 @@
         "An integration test analyzes the fixture and validates the resulting graph"
       ],
       "priority": 8,
-      "passes": false,
+      "passes": true,
       "notes": "The executable may initially run through the workspace package script, but its public command name must be codevis."
     },
     {
