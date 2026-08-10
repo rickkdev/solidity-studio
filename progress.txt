@@ -12,3 +12,10 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Quality checks run: `npm run typecheck`, `npm test`, `npm run build`, production artifact checks, and a live `npm run dev` HTTP smoke check all passed.
 - Learnings for future iterations: Keep shared first in the root workspace list; Vitest needs an explicit shared-source alias before the shared production package has been built.
 ---
+
+## 2026-08-10 16:18 CEST - US-002
+- What was implemented: Defined the versioned unified graph schema, all required node/edge kinds and statuses, source locations, JSON metadata, deterministic source-based node IDs, actionable runtime validation, and validated serialization.
+- Files changed: Updated `packages/shared/src/index.ts`, expanded `packages/shared/src/index.test.ts`, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (8 workspace tests passed), `npm run build`, and `git diff --check` all passed.
+- Learnings for future iterations: Use `createStableNodeId` for source-derived node identities and pass untrusted or deserialized graphs through `parseGraph` before consumers use them.
+---

@@ -32,7 +32,7 @@
         "Unit tests cover valid graphs, invalid references, duplicate IDs, and serialization"
       ],
       "priority": 2,
-      "passes": false,
+      "passes": true,
       "notes": "Stable IDs must be deterministic for the same repository content so UI state survives re-analysis."
     },
     {
