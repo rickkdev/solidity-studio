@@ -1,0 +1,12 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "baseUrl": ".",
+    "outDir": "dist",
+    "paths": {
+      "@codevis/shared": ["../shared/dist/index.d.ts"]
+    },
+    "rootDir": "src"
+  },
+  "exclude": ["src/**/*.test.ts"]
+}

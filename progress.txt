@@ -1,0 +1,14 @@
+# Ralph Progress Log
+Started: Mon Aug 10 15:25:03 CEST 2026
+---
+
+## Codebase Patterns
+- The npm workspaces are ordered shared, CLI, then web so production builds make shared package artifacts available to downstream packages.
+- Development type checks resolve `@codevis/shared` directly to its TypeScript source; CLI production builds resolve the already-built declaration output.
+
+## 2026-08-10 16:16 CEST - US-001
+- What was implemented: Created the npm/TypeScript workspace with shared graph, Node CLI/local-service, and React/Vite web packages; added root scripts and development documentation.
+- Files changed: Added root npm/TypeScript configuration, README, ignore rules, workspace source/tests/configuration, lockfile, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test`, `npm run build`, production artifact checks, and a live `npm run dev` HTTP smoke check all passed.
+- Learnings for future iterations: Keep shared first in the root workspace list; Vitest needs an explicit shared-source alias before the shared production package has been built.
+---
