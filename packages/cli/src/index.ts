@@ -1,6 +1,12 @@
 #!/usr/bin/env node
 import { createEmptyGraph } from "@codevis/shared";
 
+export {
+  discoverSolidityFiles,
+  SolidityDiscoveryError,
+  type DiscoverSolidityFilesOptions,
+} from "./discover-solidity-files.js";
+
 export function serviceStatus(): string {
   const graph = createEmptyGraph("Code Visualizer");
   return `${graph.name} local service ready`;

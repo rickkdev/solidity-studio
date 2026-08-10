@@ -62,7 +62,7 @@
         "Unit tests cover discovery, default ignores, custom ignores, and error cases"
       ],
       "priority": 4,
-      "passes": false,
+      "passes": true,
       "notes": "Do not require the target project to be a Foundry project for static discovery."
     },
     {

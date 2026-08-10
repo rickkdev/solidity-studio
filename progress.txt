@@ -26,3 +26,10 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Quality checks run: `npm run typecheck`, `npm test` (9 workspace tests passed), `npm run build`, `forge build`, and `git diff --check` all passed.
 - Learnings for future iterations: Reuse `packages/cli/test/fixtures/solidity-project` for Solidity analyzer and Foundry integration tests; the intentionally failing Foundry test is expected fixture behavior.
 ---
+
+## 2026-08-10 16:23 CEST - US-004
+- What was implemented: Added deterministic recursive Solidity source discovery for absolute and relative project directories, default and configurable ignore handling, normalized repository-relative results, and actionable errors for inaccessible, invalid, unreadable, and empty projects.
+- Files changed: Added `packages/cli/src/discover-solidity-files.ts`, exported the discovery API from `packages/cli/src/index.ts`, expanded CLI unit tests, and updated PRD/progress tracking.
+- Quality checks run: `npm run typecheck`, `npm test` (12 workspace tests passed), `npm run build`, and `git diff --check` all passed.
+- Learnings for future iterations: Reuse `discoverSolidityFiles` as the source-file entry point for analysis and watch mode so both features share deterministic paths and ignore behavior.
+---
