@@ -58,6 +58,18 @@ Assembly, modifiers, inheritance declarations, custom types, and other advanced 
 
 The editor sends revision-tagged source maps to `POST /api/studio/analyze` and source maps plus validated edit operations to `POST /api/studio/generate`. Compilation runs in a bounded local worker. No source is written to repository files. Analysis/generation endpoints do not execute contracts; the separate execution endpoint runs only in an isolated local Anvil sandbox. Source-range edits preserve untouched text; no-op import/export preserves every byte.
 
+## Import Solidity projects
+
+Choose **Import project / GitHub** from the welcome screen or workspace sidebar:
+
+- **Choose project folder** keeps paths such as `src/Token.sol` and `lib/math/Math.sol`, including files with identical basenames. Generated output/cache folders are excluded. You can still select multiple `.sol` files through **Import files**.
+- Enter a public repository URL such as `https://github.com/owner/repository`, optionally specify a branch, tag, or commit, and click **Find Solidity files**. Studio discovers Solidity recursively and pins downloads to the resolved commit. Use a repository root URL; put branch names (including names containing `/`) in the branch field.
+- Review the file list, filter paths, and select up to 100 Solidity files / 2 MB. Include imported dependencies. Large projects start with no selection so you can choose a subset.
+- Review **Import remappings** before importing. Studio reads root `remappings.txt` and literal remappings from `foundry.toml`'s default profile, and suggests common npm/Foundry dependency prefixes. Custom settings can be entered manually. Sources stay unchanged; remappings travel with workspace saves and local execution.
+- Import into a new workspace or select **Add to current workspace**. Conflicting source paths or remappings are rejected. The sidebar's **Files** list and source dropdown let you navigate the imported project.
+
+Both local Studio and the public website support project imports. Private repositories must be imported from a local folder. Missing dependencies, git submodules, and incompatible Solidity pragmas are reported rather than installed or rewritten. The compiler remains Solidity 0.8.36. GitHub tree truncation and [API rate limits](https://docs.github.com/en/rest/using-the-rest-api/rate-limits-for-the-rest-api) produce recovery messages; folder import remains available. No repository scripts or package installers run during import.
+
 ## Run functions and follow execution
 
 1. Open a function and use **Inputs** to focus its entry node. Fill its typed input fields; address fields suggest the three funded local test accounts. Arrays and tuples use JSON; quote large integers in JSON to retain precision.

@@ -6,7 +6,7 @@ const TEST_ACCOUNTS = ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", "0x70997970
 const ACCOUNT_TWO = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 function defaultValue(input: StudioAbiInput): string { if (input.type.includes("[")) return "[]"; if (input.type.startsWith("tuple")) return JSON.stringify(input.components?.map(defaultValue) ?? []); if (input.type === "address") return ACCOUNT_TWO; if (input.type === "bool") return "false"; if (/^u?int/.test(input.type)) return "0"; if (/^bytes/.test(input.type)) return input.type === "bytes" ? "0x" : "0x" + "00".repeat(Number(input.type.slice(5))); return ""; }
 
-export function useStudioRuntime({ sources, program, contract, fn, disabled, onStep }: { sources: Record<string, string> | null; program: StudioProgram | null; contract: StudioContract | undefined; fn: StudioFunction | undefined; disabled: boolean; onStep: (step: StudioTraceStep) => void }) {
+export function useStudioRuntime({ sources, remappings, program, contract, fn, disabled, onStep }: { sources: Record<string, string> | null; remappings: string[]; program: StudioProgram | null; contract: StudioContract | undefined; fn: StudioFunction | undefined; disabled: boolean; onStep: (step: StudioTraceStep) => void }) {
   const [values, setValues] = useState<Record<string, string[]>>({});
   const [constructorValues, setConstructorValues] = useState<string[]>([]);
   const [caller, setCaller] = useState(0); const [value, setValue] = useState("0");
@@ -16,7 +16,7 @@ export function useStudioRuntime({ sources, program, contract, fn, disabled, onS
   const [history, setHistory] = useState<StudioRunResult[]>([]);
   const [index, setIndex] = useState(-1); const [playing, setPlaying] = useState(false); const [speed, setSpeed] = useState(1000);
   const [notice, setNotice] = useState("Run a function to deploy it in a local sandbox. No wallet or real ETH is used.");
-  const scope = useMemo(() => JSON.stringify([contract?.id, sources]), [contract?.id, sources]);
+  const scope = useMemo(() => JSON.stringify([contract?.id, sources, remappings]), [contract?.id, sources, remappings]);
   const scopeRef = useRef(scope); scopeRef.current = scope;
   const onStepRef = useRef(onStep); onStepRef.current = onStep;
   const inFlight = useRef(false);
@@ -46,7 +46,7 @@ export function useStudioRuntime({ sources, program, contract, fn, disabled, onS
     inFlight.current = true;
     const requestScope = scope; setBusy(true); setError(""); setIndex(-1);
     try {
-      const response = await fetch("/api/studio/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ revision: ++serial.current, requestId: crypto.randomUUID(), sources, contractId: contract.id, functionId: fn.id, args, constructorArgs: ctorArgs, caller, value: callable.mutability === "payable" ? value : "0", calldata, ...(sessionRef.current ? { sessionId: sessionRef.current } : {}) }) });
+      const response = await fetch("/api/studio/run", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ revision: ++serial.current, requestId: crypto.randomUUID(), sources, remappings, contractId: contract.id, functionId: fn.id, args, constructorArgs: ctorArgs, caller, value: callable.mutability === "payable" ? value : "0", calldata, ...(sessionRef.current ? { sessionId: sessionRef.current } : {}) }) });
       const result = await response.json() as StudioRunResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "Local execution failed.");
       if (!mounted.current || requestScope !== scopeRef.current) { void resetRemote(result.sessionId); return; }

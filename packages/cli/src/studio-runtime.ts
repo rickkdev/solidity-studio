@@ -25,7 +25,7 @@ export function createStudioRuntime(compile: (request: StudioRequest) => Promise
     return promise;
   }
   async function execute(request: StudioRunRequest): Promise<StudioRunResult> {
-    const hash = sourceHash(request.sources, request.contractId);
+    const hash = sourceHash(request.sources, request.contractId, request.remappings);
     let session = request.sessionId ? sessions.get(request.sessionId) : undefined;
     if (request.sessionId && !session) throw new Error("Sandbox expired or was reset. Reset the runtime to deploy again.");
     if (session?.busy) throw new Error("This sandbox already has a function running.");
@@ -150,4 +150,4 @@ function parseInputs(inputs: readonly ParamType[], values: string[]): unknown[] 
     return text;
   });
 }
-function sourceHash(sources: Record<string, string>, contract: string) { return createHash("sha256").update(JSON.stringify([contract, Object.entries(sources).sort(([a], [b]) => a.localeCompare(b))])).digest("hex"); }
+function sourceHash(sources: Record<string, string>, contract: string, remappings: string[] = []) { return createHash("sha256").update(JSON.stringify([contract, remappings, Object.entries(sources).sort(([a], [b]) => a.localeCompare(b))])).digest("hex"); }

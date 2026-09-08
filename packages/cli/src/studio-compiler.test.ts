@@ -116,3 +116,19 @@ describe("source-preserving studio compiler", () => {
     expect(result.program).toBeNull();
   });
 });
+
+it("compiles and edits multi-file projects using preserved import remappings", () => {
+  const sources = {
+    'src/Counter.sol': '// SPDX-License-Identifier: MIT\npragma solidity ^0.8.26; import {Math} from "@math/Math.sol"; contract Counter { function sum(uint256 amount) public pure returns(uint256) { return Math.add(amount, 1); } }',
+    'lib/math/Math.sol': '// SPDX-License-Identifier: MIT\npragma solidity ^0.8.26; library Math { function add(uint256 a, uint256 b) internal pure returns(uint256) { return a + b; } }',
+  };
+  const request = { revision: 1, sources, remappings: ['@math/=lib/math/'] };
+  const result = analyzeStudio(request);
+  expect(result.program).not.toBeNull();
+  const node = result.program!.nodes.find(n => n.kind === 'Return' && n.text.includes('Math.add'))!;
+  const changed = generateStudio({ ...request, edit: { kind: 'replace', nodeId: node.id, text: 'return Math.add(amount, 2)' } });
+  expect(changed.program).not.toBeNull();
+  expect(changed.remappings).toEqual(request.remappings);
+  expect(changed.sources['lib/math/Math.sol']).toBe(sources['lib/math/Math.sol']);
+  expect(changed.sources['src/Counter.sol']).toContain('Math.add(amount, 2)');
+});

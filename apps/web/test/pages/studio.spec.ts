@@ -1,3 +1,4 @@
+import "../project-import-checks";
 import { expect, test } from "@playwright/test";
 
 test("public site converts and edits Solidity without a backend", async ({ page }) => {

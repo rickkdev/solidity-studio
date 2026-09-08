@@ -1,3 +1,4 @@
+import { validateStudioRemappings } from "./studio.js";
 import { Interface, type ParamType } from "ethers";
 import type { StudioDiagnostic, StudioEdit, StudioNode, StudioProgram, StudioRequest, StudioResult, StudioSpan, StudioBuild, StudioAbiInput, StudioCallable } from "./studio.js";
 
@@ -19,15 +20,16 @@ function validateSources(sources: unknown): asserts sources is Record<string, st
 
 function analyzeStudio(request: StudioRequest): StudioResult {
   validateSources(request.sources);
+  validateStudioRemappings(request.remappings);
   if (!Number.isSafeInteger(request.revision) || request.revision < 0) throw new Error("Invalid revision.");
   const sources = Object.fromEntries(Object.entries(request.sources).map(([name, content]) => [name, { content }]));
-  const output = compileSources(sources);
+  const output = compileSources(sources, request.remappings);
   const diagnostics: StudioDiagnostic[] = (output.errors ?? []).map((error: any) => {
     const loc = error.sourceLocation;
     const text = loc && request.sources[loc.file];
     return { severity: error.severity, message: error.formattedMessage ?? error.message, ...(text !== undefined && loc.start >= 0 ? { file: loc.file, start: charOffset(text, loc.start), end: charOffset(text, loc.end) } : {}) };
   });
-  const result: StudioResult = { revision: request.revision, compilerVersion: solc.version(), sources: request.sources, diagnostics, program: null };
+  const result: StudioResult = { ...(request.remappings ? { remappings: request.remappings } : {}), revision: request.revision, compilerVersion: solc.version(), sources: request.sources, diagnostics, program: null };
   if (diagnostics.some(d => d.severity === "error")) return result;
   const program = emptyProgram();
   const declarations = new Map<number, Ast>();
@@ -311,7 +313,7 @@ function generateStudio(request: StudioRequest): StudioResult {
   }
   const sources = { ...request.sources };
   for (const p of patches.sort((a, b) => b.span.start - a.span.start)) sources[p.span.file] = sources[p.span.file]!.slice(0, p.span.start) + p.text + sources[p.span.file]!.slice(p.span.end);
-  return analyzeStudio({ revision: request.revision, sources });
+  return analyzeStudio({ ...request, sources });
 }
 function statementSpan(node: StudioNode, sources: Record<string, string>): StudioSpan {
   const span = { ...node.span }; const source = sources[span.file]!;
@@ -330,13 +332,13 @@ function abiInput(input: ParamType): StudioAbiInput {
   const tuple = input.baseType === "array" ? input.arrayChildren : input;
   return { name: input.name, type: input.type, ...(tuple?.components ? { components: tuple.components.map(abiInput) } : {}) };
 }
-function compileSources(sources: Record<string, { content: string }>) {
-  return JSON.parse(solc.compile(JSON.stringify({ language: "Solidity", sources, settings: { evmVersion: "cancun", outputSelection: { "*": { "": ["ast"], "*": ["abi", "evm.bytecode.object", "evm.bytecode.sourceMap", "evm.deployedBytecode.object", "evm.deployedBytecode.sourceMap"] } } } })));
+function compileSources(sources: Record<string, { content: string }>, remappings: string[] = []) {
+  return JSON.parse(solc.compile(JSON.stringify({ language: "Solidity", sources, settings: { remappings, evmVersion: "cancun", outputSelection: { "*": { "": ["ast"], "*": ["abi", "evm.bytecode.object", "evm.bytecode.sourceMap", "evm.deployedBytecode.object", "evm.deployedBytecode.sourceMap"] } } } })));
 }
 function buildStudioRuntime(request: StudioRequest): StudioBuild {
   const analysis = analyzeStudio(request);
   if (!analysis.program) throw new Error(analysis.diagnostics.filter(d => d.severity === "error").map(d => d.message).join("\n"));
-  const output = compileSources(Object.fromEntries(Object.entries(request.sources).map(([file, content]) => [file, { content }])));
+  const output = compileSources(Object.fromEntries(Object.entries(request.sources).map(([file, content]) => [file, { content }])), request.remappings);
   const artifacts: StudioBuild["artifacts"] = {};
   for (const contract of analysis.program.contracts) {
     const artifact = output.contracts[contract.span.file][contract.name];

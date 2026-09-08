@@ -1,3 +1,4 @@
+import "../project-import-checks";
 import { readFile } from "node:fs/promises";
 import { expect, test } from "@playwright/test";
 

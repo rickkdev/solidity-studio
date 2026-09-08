@@ -1,3 +1,5 @@
+import { ProjectImportDialog } from "./studio-project-dialog";
+import { MAX_PROJECT_BYTES, MAX_PROJECT_FILES, type ImportedProject } from "./studio-project-import";
 import { compileInBrowser } from "./studio-browser-compiler";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { Background, BackgroundVariant, Controls, Handle, MarkerType, MiniMap, Position, ReactFlow, type Connection, type Node, type NodeProps, type NodeChange, type ReactFlowInstance } from "@xyflow/react";
@@ -7,7 +9,7 @@ import { nodeTemplates } from "./studio-templates";
 import "./studio.css";
 
 type Positions = StudioWorkspace["positions"];
-type Snapshot = { sources: Record<string, string>; positions: Positions };
+type Snapshot = { remappings?: string[]; sources: Record<string, string>; positions: Positions };
 const STORAGE = "codevis-studio-v1";
 const PALETTE = [
   { group: "Contract", name: "Function", text: "function newFunction(uint256 amount) external {\n    }" },
@@ -59,6 +61,7 @@ export function Studio() {
   const [contractId, setContractId] = useState("");
   const [functionId, setFunctionId] = useState("");
   const [selectedId, setSelectedId] = useState("");
+  const [showProjectImport, setShowProjectImport] = useState(false);
   const [paste, setPaste] = useState(STUDIO_TOKEN_FACTORY);
   const [query, setQuery] = useState("");
   const [showSource, setShowSource] = useState(true);
@@ -84,7 +87,7 @@ export function Studio() {
   const fn = program?.functions.find(f => f.id === functionId);
   const selected = program?.nodes.find(n => n.id === selectedId);
   const stale = !!workspace && (!lastValid || !sameSources(workspace.sources, lastValid.sources));
-  const runtime = useStudioRuntime({ sources: workspace?.sources ?? null, program, contract, fn, disabled: busy || stale || !!draft, onStep: step => {
+  const runtime = useStudioRuntime({ sources: workspace?.sources ?? null, remappings: workspace?.remappings ?? [], program, contract, fn, disabled: busy || stale || !!draft, onStep: step => {
     const target = program?.nodes.find(n => n.id === step.nodeId);
     if (!target || target.contractId !== contract?.id) return;
     setFunctionId(step.functionId); setSelectedId(step.nodeId); setFile(step.source.file);
@@ -124,11 +127,12 @@ export function Studio() {
     const current = ++revision.current;
     setBusy(true); setError("");
     try {
+      const remappings = workspaceRef.current?.remappings ?? [];
       if (import.meta.env.VITE_PUBLIC_DEMO === "true") {
-        const result = await compileInBrowser(operation, { revision: current, sources, ...(edit ? { edit } : {}) }, controller.signal);
+        const result = await compileInBrowser(operation, { revision: current, sources, remappings, ...(edit ? { edit } : {}) }, controller.signal);
         return current === revision.current ? result : null;
       }
-      const response = await fetch(`/api/studio/${operation}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ revision: current, sources, ...(edit ? { edit } : {}) }), signal: controller.signal });
+      const response = await fetch(`/api/studio/${operation}`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ revision: current, sources, remappings, ...(edit ? { edit } : {}) }), signal: controller.signal });
       const result = await response.json() as StudioResult & { error?: string };
       if (!response.ok) throw new Error(result.error ?? "The compiler service could not complete this edit.");
       if (current !== revision.current) return null;
@@ -156,8 +160,8 @@ export function Studio() {
     if (workspaceRef.current) setUndo(history => [...history.slice(-99), workspaceRef.current!]);
     setRedo([]); setWorkspace(next);
   };
-  function open(sources: Record<string, string>, positions: Positions = {}, pendingEdit?: StudioDraft) {
-    revision.current++; abort.current?.abort(); setLastValid(null); setWorkspace({ sources, positions }); setFile(Object.keys(sources)[0] ?? "");
+  function open(sources: Record<string, string>, positions: Positions = {}, pendingEdit?: StudioDraft, remappings: string[] = []) {
+    revision.current++; abort.current?.abort(); setLastValid(null); setWorkspace({ sources, positions, remappings }); setFile(Object.keys(sources)[0] ?? "");
     setContractId(""); setFunctionId(""); setSelectedId(""); setUndo([]); setRedo([]); setDraft(pendingEdit ?? null); setError(""); setDiagnostics([]);
   }
   async function generate(edit: StudioEdit) {
@@ -167,7 +171,7 @@ export function Studio() {
     if (!result.program) { setDiagnostics(result.diagnostics); setError("This node edit does not compile. Fix the draft or cancel it; your accepted source is unchanged."); return; }
     const previousSelected = selected;
     skipAnalyze.current = true;
-    commit({ sources: result.sources, positions: reconcilePositions(program, result.program, workspace.positions) });
+    commit({ ...workspace, sources: result.sources, positions: reconcilePositions(program, result.program, workspace.positions) });
     acceptResult(result); setDraft(null); setError("");
     if (previousSelected) setSelectedId(result.program.nodes.find(n => n.id === previousSelected.id)?.id ?? result.program.nodes.find(n => n.functionId === previousSelected.functionId && n.span.start === previousSelected.span.start && n.kind === previousSelected.kind)?.id ?? "");
   }
@@ -192,15 +196,32 @@ export function Studio() {
     void flow.current?.setCenter(position.x + 140, position.y + height / 2, { zoom: .85, duration: 180 });
   }
   function navigateFunction(id: string) { setFunctionId(id); setSelectedId(""); setRegionId(program?.functions.find(f => f.id === id)?.bodyRegion ?? ""); }
+  function importProject(project: ImportedProject, merge: boolean) {
+    if (workspace && merge) {
+      const conflicts = Object.keys(project.sources).filter(path => path in workspace.sources && workspace.sources[path] !== project.sources[path]);
+      if (conflicts.length) throw new Error(`These paths already contain different source: ${conflicts.slice(0, 5).join(", ")}. Import as a new workspace or rename them.`);
+      const sources = { ...workspace.sources, ...project.sources };
+      if (Object.keys(sources).length > MAX_PROJECT_FILES || Object.values(sources).reduce((sum, text) => sum + new TextEncoder().encode(text).length, 0) > MAX_PROJECT_BYTES) throw new Error("Combined workspace exceeds 100 files or 2 MB. Import as a new workspace.");
+      const prefixes = new Map<string, string>();
+      for (const mapping of [...(workspace.remappings ?? []), ...project.remappings]) {
+        const [prefix, target] = mapping.split("=");
+        if (prefixes.has(prefix!) && prefixes.get(prefix!) !== target) throw new Error(`Conflicting remapping for ${prefix}. Adjust the project remappings before adding it.`);
+        prefixes.set(prefix!, target!);
+      }
+      // Open resets compiled state so remapping-only changes cannot reuse old analysis.
+      open(sources, workspace.positions, undefined, [...new Set([...(workspace.remappings ?? []), ...project.remappings])]);
+    } else open(project.sources, {}, undefined, project.remappings);
+  }
   async function importFiles(files: FileList | null) {
     if (!files?.length) return;
     try {
-      if (files.length === 1 && files[0]!.name.endsWith(".json")) { const restored = parseStudioWorkspace(JSON.parse(await files[0]!.text())); open(restored.sources, restored.positions, restored.pendingEdit); }
+      if (files.length === 1 && files[0]!.name.endsWith(".json")) { const restored = parseStudioWorkspace(JSON.parse(await files[0]!.text())); open(restored.sources, restored.positions, restored.pendingEdit, restored.remappings); }
       else {
+        if (files.length > MAX_PROJECT_FILES || Array.from(files).reduce((sum, file) => sum + file.size, 0) > MAX_PROJECT_BYTES) throw new Error("Choose at most 100 Solidity files and 2 MB, or use Import project to select a subset.");
         const entries = await Promise.all(Array.from(files).map(async f => [f.webkitRelativePath || f.name, await f.text()] as const));
         if (entries.some(([name]) => !name.endsWith(".sol"))) throw new Error("Choose .sol files or a workspace JSON.");
         if (new Set(entries.map(([name]) => name)).size !== entries.length) throw new Error("Duplicate file names. Import a folder or rename the files.");
-        if (workspace) commit({ ...workspace, sources: { ...workspace.sources, ...Object.fromEntries(entries) } }); else open(Object.fromEntries(entries));
+        importProject({ sources: Object.fromEntries(entries), remappings: [] }, !!workspace);
       }
     } catch (e) { setError(e instanceof Error ? e.message : "Could not import files."); }
     if (importInput.current) importInput.current.value = "";
@@ -243,13 +264,14 @@ export function Studio() {
     <header className="studio-topbar"><button className="studio-brand" onClick={() => { if (!busy && !draft && !runtime.busy) { setWorkspace(null); setLastValid(null); setError(""); } }}><span>⌘</span><div>Solidity Studio<small>CODE ↔ CANVAS</small></div></button>
       {workspace ? <div className="studio-actions"><span className="studio-save">{saveStatus}</span><button disabled={!undo.length || busy || runtime.busy || runtime.playing} onClick={() => travel("undo")}>Undo</button><button disabled={!redo.length || busy || runtime.busy || runtime.playing} onClick={() => travel("redo")}>Redo</button><button onClick={() => setShowSource(s => !s)}>{showSource ? "Hide code" : "Show code"}</button><button onClick={() => download("workspace.codevis.json", JSON.stringify({ schemaVersion: 1, ...workspace, ...(draft ? { pendingEdit: draft } : {}) }, null, 2))}>Save workspace</button><button className="studio-primary" onClick={() => download(activeFile.split("/").at(-1) || "Contract.sol", workspace.sources[activeFile] ?? "")}>Export {stale ? "draft" : draft ? "accepted code" : "Solidity"}</button></div> : <span className="studio-save">Local compiler · no AI account needed</span>}
     </header>
+    {showProjectImport && <ProjectImportDialog hasWorkspace={!!workspace} onClose={() => setShowProjectImport(false)} onImport={importProject} />}
     <input ref={importInput} type="file" multiple accept=".sol,.json" hidden aria-label="Import Solidity or workspace" onChange={e => void importFiles(e.target.files)} />
     {error && <div className="studio-error" role="alert">{error}<button onClick={() => setError("")}>Dismiss</button></div>}
     {import.meta.env.VITE_PUBLIC_DEMO === "true" && <p className="studio-public-notice">Public browser edition · Convert and edit Solidity here. To run functions and replay execution, <a href="https://github.com/rickkdev/solidity-studio#development">run Studio locally</a>.</p>}
-    {!workspace ? <div className="studio-welcome"><div className="studio-welcome__intro"><span className="studio-kicker">A CONTRACT YOU CAN FOLLOW</span><h1>Think in nodes.<br /><em>Build in Solidity.</em></h1><p>Turn a contract into connected logic. Follow the values, change a condition, and take the code back with you.</p><div className="studio-start-actions"><button className="studio-primary" onClick={() => open({ "MyContract.sol": STUDIO_BLANK })}>＋ New contract</button><button onClick={() => importInput.current?.click()}>Import files</button><button onClick={() => open({ "Vault.sol": STUDIO_VAULT })}>Explore a vault →</button></div>{saved && <button className="studio-resume" onClick={() => open(saved.sources, saved.positions, saved.pendingEdit)}>Resume saved workspace <span>{Object.keys(saved.sources).join(", ")} →</span></button>}<div className="studio-preview" aria-hidden="true"><span>amount <small>uint256</small></span><i>→</i><span>Check balance <small>true / false</small></span><i>→</i><span>Send ETH <small>success</small></span></div></div><section className="studio-paste"><header><span>01 / START WITH CODE</span><h2>Paste your Solidity</h2><p>Try the token factory below, or replace it with your own Solidity. Choose minting, burning, and pausing when you create a token. This demo uses token IDs in one contract.</p><button onClick={() => setPaste(STUDIO_TOKEN_FACTORY)}>Load token factory example</button></header><textarea aria-label="Paste Solidity" spellCheck={false} value={paste} onChange={e => setPaste(e.target.value)} placeholder={'// Paste a complete contract here\npragma solidity ^0.8.20;\n\ncontract YourContract {\n    ...\n}'} /><button className="studio-primary" disabled={!paste.trim()} onClick={() => open({ "Contract.sol": paste.replace(/^\s*```(?:solidity)?\s*\n/, "").replace(/\n```\s*$/, "") })}>Convert to nodes →</button></section></div> : <>
+    {!workspace ? <div className="studio-welcome"><div className="studio-welcome__intro"><span className="studio-kicker">A CONTRACT YOU CAN FOLLOW</span><h1>Think in nodes.<br /><em>Build in Solidity.</em></h1><p>Turn a contract into connected logic. Follow the values, change a condition, and take the code back with you.</p><div className="studio-start-actions"><button className="studio-primary" onClick={() => open({ "MyContract.sol": STUDIO_BLANK })}>＋ New contract</button><button onClick={() => importInput.current?.click()}>Import files</button><button onClick={() => setShowProjectImport(true)}>Import project / GitHub</button><button onClick={() => open({ "Vault.sol": STUDIO_VAULT })}>Explore a vault →</button></div>{saved && <button className="studio-resume" onClick={() => open(saved.sources, saved.positions, saved.pendingEdit, saved.remappings)}>Resume saved workspace <span>{Object.keys(saved.sources).join(", ")} →</span></button>}<div className="studio-preview" aria-hidden="true"><span>amount <small>uint256</small></span><i>→</i><span>Check balance <small>true / false</small></span><i>→</i><span>Send ETH <small>success</small></span></div></div><section className="studio-paste"><header><span>01 / START WITH CODE</span><h2>Paste your Solidity</h2><p>Try the token factory below, or replace it with your own Solidity. Choose minting, burning, and pausing when you create a token. This demo uses token IDs in one contract.</p><button onClick={() => setPaste(STUDIO_TOKEN_FACTORY)}>Load token factory example</button></header><textarea aria-label="Paste Solidity" spellCheck={false} value={paste} onChange={e => setPaste(e.target.value)} placeholder={'// Paste a complete contract here\npragma solidity ^0.8.20;\n\ncontract YourContract {\n    ...\n}'} /><button className="studio-primary" disabled={!paste.trim()} onClick={() => open({ "Contract.sol": paste.replace(/^\s*```(?:solidity)?\s*\n/, "").replace(/\n```\s*$/, "") })}>Convert to nodes →</button></section></div> : <>
       <div className="studio-status" role="status"><span className={stale ? "is-warning" : "is-valid"}>● {busy ? "Compiling…" : stale ? "Source draft · canvas shows last valid revision" : draft ? "Node draft · source editing paused" : "Synchronized"}</span><span>{lastValid ? `solc ${lastValid.compilerVersion.split("+")[0]}` : import.meta.env.VITE_PUBLIC_DEMO === "true" ? "Browser Solidity compiler" : "Local Solidity compiler"} · {runtime.busy ? "Executing locally" : runtime.playing ? "Recorded execution trace" : import.meta.env.VITE_PUBLIC_DEMO === "true" ? "Browser compilation" : "Code + local execution"}</span>{stale && !busy && <button onClick={() => void request("analyze", workspace.sources).then(r => { if (r) acceptResult(r); })}>Retry compiler</button>}</div>
       <div className={`studio-workspace ${showSource ? "" : "studio-workspace--wide"}`}>
-        <aside className="studio-sidebar"><div className="studio-section-heading">CONTRACTS <button aria-label="Import more files" onClick={() => importInput.current?.click()}>＋</button></div><nav aria-label="Contract navigation">{program?.contracts.map(c => <div key={c.id}><button className={contract?.id === c.id && !fn ? "is-active" : ""} onClick={() => { setContractId(c.id); navigateFunction(""); setFile(c.span.file); }}>◇ {c.name}</button>{program.functions.filter(f => f.contractId === c.id).map(f => <button className={`studio-function ${fn?.id === f.id ? "is-active" : ""}`} key={f.id} onClick={() => { setContractId(c.id); navigateFunction(f.id); setFile(f.span.file); }}>ƒ {f.name}</button>)}</div>)}</nav><div className="studio-section-heading">NODE PALETTE</div><input className="studio-search" aria-label="Search node palette" placeholder="Find a node…" value={query} onChange={e => setQuery(e.target.value)} /><div className="studio-palette">{PALETTE.filter(p => `${p.name} ${p.group}`.toLowerCase().includes(query.toLowerCase())).map(item => <button key={item.name} disabled={locked || !contract} onClick={() => addPalette(item)}><span>{item.name}</span><small>{item.group}</small></button>)}</div></aside>
+        <aside className="studio-sidebar"><div className="studio-project-files"><button disabled={locked} onClick={() => setShowProjectImport(true)}>Import project / GitHub</button><details><summary>Files · {Object.keys(workspace.sources).length}</summary>{Object.keys(workspace.sources).sort().map(path => <button key={path} className={activeFile === path ? "is-active" : ""} onClick={() => { setFile(path); setShowSource(true); const target = program?.contracts.find(c => c.span.file === path); if (target) { setContractId(target.id); navigateFunction(""); } }}>{path}</button>)}</details></div><div className="studio-section-heading">CONTRACTS <button aria-label="Import more files" onClick={() => importInput.current?.click()}>＋</button></div><nav aria-label="Contract navigation">{program?.contracts.map(c => <div key={c.id}><button className={contract?.id === c.id && !fn ? "is-active" : ""} onClick={() => { setContractId(c.id); navigateFunction(""); setFile(c.span.file); }}>◇ {c.name}</button>{program.functions.filter(f => f.contractId === c.id).map(f => <button className={`studio-function ${fn?.id === f.id ? "is-active" : ""}`} key={f.id} onClick={() => { setContractId(c.id); navigateFunction(f.id); setFile(f.span.file); }}>ƒ {f.name}</button>)}</div>)}</nav><div className="studio-section-heading">NODE PALETTE</div><input className="studio-search" aria-label="Search node palette" placeholder="Find a node…" value={query} onChange={e => setQuery(e.target.value)} /><div className="studio-palette">{PALETTE.filter(p => `${p.name} ${p.group}`.toLowerCase().includes(query.toLowerCase())).map(item => <button key={item.name} disabled={locked || !contract} onClick={() => addPalette(item)}><span>{item.name}</span><small>{item.group}</small></button>)}</div></aside>
         <section className="studio-canvas-section" aria-label="Visual Solidity workspace"><header className="studio-canvas-toolbar"><div><button onClick={() => navigateFunction("")}>{contract?.name ?? "Workspace"}</button>{fn && <><span>/</span><strong>{fn.name}</strong></>}</div><div>{fn && <button disabled={runtime.busy || runtime.playing} onClick={() => focusInputs(fn.id)}>Inputs</button>}{fn && <button className="runtime-toolbar-play" disabled={!runtime.canRun} onClick={() => void runtime.run()} title="Uses the inputs on the function entry node">▶ Run selected function</button>}<label><input type="checkbox" checked={showValues} onChange={e => setShowValues(e.target.checked)} /> All values</label><button disabled={!selectedId} onClick={() => { const n = nodes.find(n => n.id === selectedId); if (n) void flow.current?.setCenter(n.position.x + 140, n.position.y + 80, { zoom: .85, duration: 250 }); }}>Focus</button><button onClick={() => setWorkspace(w => w ? { ...w, positions: { ...w.positions, ...Object.fromEntries(Object.entries(autoPositions).map(([id, position]) => [fn ? id : `overview:${id}`, position])) } } : w)}>Auto-layout</button></div></header>
           {fn && (fn.modifiers.length > 0 || (contract && /\bis\b/.test(workspace.sources[contract.span.file]?.slice(contract.span.start, workspace.sources[contract.span.file]?.indexOf("{", contract.span.start)) ?? ""))) && <div className="studio-boundary">Inherited behavior and modifiers remain in source. {fn.modifiers.length > 0 && `Modifier boundary: ${fn.modifiers.join(" → ")}.`} This canvas shows the function body.</div>}
           {!fn && contract && <div className="studio-contract-intro"><strong>{contract.name}</strong><span>Select a function node to open its execution flow. These connections show the declarations it uses.</span></div>}
