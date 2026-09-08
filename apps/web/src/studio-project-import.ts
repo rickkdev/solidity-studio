@@ -103,3 +103,8 @@ export async function readProject(project: ProjectCandidate, selected: Set<strin
   signal.throwIfAborted();
   return { sources: Object.fromEntries(entries), remappings };
 }
+
+export function recommendedProjectFiles(files: ProjectFile[]): ProjectFile[] {
+  const production = files.filter(file => !/(^|\/)(audits?|tests?|mocks?|examples?|scripts?)(\/|$)/i.test(file.path));
+  return production.length ? production : files;
+}

@@ -1,5 +1,6 @@
-import { createStudioCompiler, type StudioRequest } from "@codevis/shared";
+import { createStudioCompiler, selectStudioCompiler, type StudioRequest } from "@codevis/shared";
 import compilerUrl from "solc/soljson.js?url";
+import legacyCompilerUrl from "solc-0.7/soljson.js?url";
 
 type Soljson = { cwrap: (name: string, result: string | null, args: string[]) => (...args: any[]) => any };
 const scope = self as unknown as { importScripts: (...urls: string[]) => void; Module: Soljson; postMessage: (data: unknown) => void; onmessage: ((event: MessageEvent) => void) | null };
@@ -7,7 +8,7 @@ let compiler: ReturnType<typeof createStudioCompiler> | undefined;
 scope.onmessage = (event: MessageEvent<{ operation: string; request: StudioRequest }>) => {
   try {
     if (!compiler) {
-      scope.importScripts(compilerUrl);
+      scope.importScripts(selectStudioCompiler(event.data.request.sources) === "0.7.6" ? legacyCompilerUrl : compilerUrl);
       const compile = scope.Module.cwrap("solidity_compile", "string", ["string", "number", "number"]);
       const reset = scope.Module.cwrap("solidity_reset", null, []);
       compiler = createStudioCompiler({

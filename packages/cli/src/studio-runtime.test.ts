@@ -114,3 +114,16 @@ it("runs payable constructors, functions, receive and fallback with wei inputs",
     await expect(runtime.run(req("constructor", ["0"], "0", deployment.sessionId))).rejects.toThrow(/already ran/);
   } finally { await runtime.close(); }
 }, 30_000);
+
+it("executes a Solidity 0.7.6 contract with its original arithmetic semantics", async () => {
+  const sources = { 'Legacy.sol': 'pragma solidity =0.7.6; contract Legacy { function decrement(uint256 amount) public pure returns (uint256) { return amount - 1; } }' };
+  const build = buildStudioRuntime({ revision: 1, sources });
+  expect(build.compilerVersion).toContain('0.7.6');
+  const runtime = createStudioRuntime(async () => build);
+  try {
+    const result = await runtime.run({ revision: 1, requestId: randomUUID(), sources, contractId: build.program!.contracts[0]!.id, functionId: build.program!.functions[0]!.id, args: ['0'], constructorArgs: [], caller: 0, value: '0' });
+    expect(result.status).toBe('success');
+    expect(result.returnValues).toEqual([(2n ** 256n - 1n).toString()]);
+    expect(result.steps.length).toBeGreaterThan(0);
+  } finally { await runtime.close(); }
+}, 30_000);

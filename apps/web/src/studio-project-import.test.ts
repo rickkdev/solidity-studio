@@ -54,3 +54,10 @@ it("reports GitHub rate limits, missing repositories and truncated trees", async
   vi.stubGlobal('fetch', vi.fn(async (url: string) => Response.json(url.includes('/git/trees/') ? { truncated: true } : url.includes('/commits/') ? { sha: 'a'.repeat(40), commit: { tree: { sha: 'b'.repeat(40) } } } : { default_branch: 'main' })));
   await expect(discoverGitHub('https://github.com/example/project', '', signal())).rejects.toThrow(/incomplete/);
 });
+
+it("recommends production contracts without audit/test harnesses but leaves them discoverable", async () => {
+  const { recommendedProjectFiles } = await import('./studio-project-import');
+  const files = ['contracts/Factory.sol', 'contracts/libraries/Math.sol', 'contracts/test/Mock.sol', 'audits/tob/contracts/Fuzz.sol', 'test/Token.sol'].map(path => file(path, ''));
+  expect(recommendedProjectFiles(files).map(f => f.path)).toEqual(['contracts/Factory.sol', 'contracts/libraries/Math.sol']);
+  expect(files).toHaveLength(5);
+});

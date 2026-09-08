@@ -28,3 +28,19 @@ test("public site converts and edits Solidity without a backend", async ({ page 
   await expect(page.getByRole("status")).toContainText("Synchronized");
   expect(posts).toEqual([]);
 });
+
+test("switches browser compiler versions for legacy Solidity and keeps source unchanged", async ({ page }) => {
+  await page.goto('./');
+  const legacy = 'pragma solidity =0.7.6; contract Legacy { function decrement(uint256 amount) public pure returns(uint256) { return amount - 1; } }';
+  await page.getByLabel('Paste Solidity').fill(legacy);
+  await page.getByRole('button', { name: 'Convert to nodes' }).click();
+  await expect(page.getByRole('status')).toContainText('solc 0.7.6');
+  await expect(page.getByRole('status')).toContainText('Synchronized');
+  await expect(page.getByLabel('Solidity source editor')).toHaveValue(legacy);
+  await page.getByLabel('Solidity source editor').fill(legacy.replace('=0.7.6', '^0.8.26'));
+  await expect(page.getByRole('status')).toContainText('solc 0.8.36');
+  await expect(page.getByRole('status')).toContainText('Synchronized');
+  await page.getByLabel('Solidity source editor').fill(legacy);
+  await expect(page.getByRole('status')).toContainText('solc 0.7.6');
+  await expect(page.getByRole('status')).toContainText('Synchronized');
+});

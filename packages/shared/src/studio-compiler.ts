@@ -332,13 +332,15 @@ function abiInput(input: ParamType): StudioAbiInput {
   const tuple = input.baseType === "array" ? input.arrayChildren : input;
   return { name: input.name, type: input.type, ...(tuple?.components ? { components: tuple.components.map(abiInput) } : {}) };
 }
-function compileSources(sources: Record<string, { content: string }>, remappings: string[] = []) {
-  return JSON.parse(solc.compile(JSON.stringify({ language: "Solidity", sources, settings: { remappings, evmVersion: "cancun", outputSelection: { "*": { "": ["ast"], "*": ["abi", "evm.bytecode.object", "evm.bytecode.sourceMap", "evm.deployedBytecode.object", "evm.deployedBytecode.sourceMap"] } } } })));
+function compileSources(sources: Record<string, { content: string }>, remappings: string[] = [], runtime = false) {
+  const legacy = solc.version().startsWith("0.7.");
+  return JSON.parse(solc.compile(JSON.stringify({ language: "Solidity", sources, settings: { remappings, evmVersion: legacy ? "istanbul" : "cancun", ...(runtime && legacy ? { optimizer: { enabled: true, runs: 200 } } : {}), outputSelection: { "*": { "": ["ast"], "*": runtime ? ["abi", "evm.bytecode.object", "evm.bytecode.sourceMap", "evm.deployedBytecode.object", "evm.deployedBytecode.sourceMap"] : ["abi"] } } } })));
 }
 function buildStudioRuntime(request: StudioRequest): StudioBuild {
   const analysis = analyzeStudio(request);
   if (!analysis.program) throw new Error(analysis.diagnostics.filter(d => d.severity === "error").map(d => d.message).join("\n"));
-  const output = compileSources(Object.fromEntries(Object.entries(request.sources).map(([file, content]) => [file, { content }])), request.remappings);
+  const output = compileSources(Object.fromEntries(Object.entries(request.sources).map(([file, content]) => [file, { content }])), request.remappings, true);
+  if (output.errors?.some((error: { severity: string }) => error.severity === "error")) throw new Error(output.errors.filter((error: { severity: string }) => error.severity === "error").map((error: { formattedMessage: string }) => error.formattedMessage).join("\n"));
   const artifacts: StudioBuild["artifacts"] = {};
   for (const contract of analysis.program.contracts) {
     const artifact = output.contracts[contract.span.file][contract.name];

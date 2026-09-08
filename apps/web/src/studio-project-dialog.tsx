@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { discoverGitHub, localProject, MAX_PROJECT_BYTES, MAX_PROJECT_FILES, projectRemappings, readProject, type ImportedProject, type ProjectCandidate } from "./studio-project-import";
+import { discoverGitHub, localProject, recommendedProjectFiles, MAX_PROJECT_BYTES, MAX_PROJECT_FILES, projectRemappings, readProject, type ImportedProject, type ProjectCandidate } from "./studio-project-import";
 import "./studio-project-import.css";
 
 export function ProjectImportDialog({ onClose, onImport, hasWorkspace }: { onClose: () => void; onImport: (project: ImportedProject, merge: boolean) => void; hasWorkspace: boolean }) {
@@ -18,7 +18,8 @@ export function ProjectImportDialog({ onClose, onImport, hasWorkspace }: { onClo
       if (!candidate.files.length) throw new Error("No Solidity files found in this project.");
       const remappings = await projectRemappings(candidate, controller.signal);
       controller.signal.throwIfAborted();
-      setProject(candidate); setSelected(new Set(candidate.files.length <= MAX_PROJECT_FILES && candidate.files.reduce((sum, file) => sum + file.size, 0) <= MAX_PROJECT_BYTES ? candidate.files.map(file => file.path) : []));
+      const recommended = recommendedProjectFiles(candidate.files);
+      setProject(candidate); setSelected(new Set(recommended.length <= MAX_PROJECT_FILES && recommended.reduce((sum, file) => sum + file.size, 0) <= MAX_PROJECT_BYTES ? recommended.map(file => file.path) : []));
       setMappingText(remappings.join("\n")); setFilter(""); setStatus(`${candidate.files.length} Solidity files found`);
     } catch (e) { if (!controller.signal.aborted) setError(e instanceof Error ? e.message : "Project discovery failed."); }
     finally { if (!controller.signal.aborted) setBusy(false); }
@@ -46,11 +47,11 @@ export function ProjectImportDialog({ onClose, onImport, hasWorkspace }: { onClo
     {status && <p aria-live="polite">{status}</p>}{error && <p role="alert" className="project-error">{error}</p>}
     {project && <section><h3>{project.label}</h3>{project.warnings.map(warning => <p key={warning}>{warning}</p>)}
       <input aria-label="Filter project files" placeholder="Filter paths…" value={filter} onChange={e => setFilter(e.target.value)} />
-      <div className="project-selection"><button disabled={busy} onClick={() => setSelected(new Set([...selected, ...visible.map(file => file.path)]))}>Select visible</button><button disabled={busy} onClick={() => setSelected(new Set())}>Clear selection</button><span>{selected.size} selected · {(bytes / 1000).toFixed(1)} KB / 2 MB</span></div>
+      <p>Production files are selected by default when identifiable. Tests, audit harnesses, mocks, and examples remain available in the list.</p><div className="project-selection"><button disabled={busy} onClick={() => setSelected(new Set(recommendedProjectFiles(project.files).map(file => file.path)))}>Select production files</button><button disabled={busy} onClick={() => setSelected(new Set([...selected, ...visible.map(file => file.path)]))}>Select visible</button><button disabled={busy} onClick={() => setSelected(new Set())}>Clear selection</button><span>{selected.size} selected · {(bytes / 1000).toFixed(1)} KB / 2 MB</span></div>
       {project.files.length > 500 && <p>Showing up to 500 matches. Filter by folder or filename to narrow the list.</p>}
       <div className="project-files">{visible.map(file => <label key={file.path}><input type="checkbox" checked={selected.has(file.path)} disabled={busy} onChange={e => setSelected(previous => { const next = new Set(previous); if (e.target.checked) next.add(file.path); else next.delete(file.path); return next; })} /><span>{file.path}</span><small>{(file.size / 1000).toFixed(1)} KB</small></label>)}</div>
       <details><summary>Import remappings</summary><p>One prefix=path per line. Detected from root remappings.txt, default Foundry settings, and common dependency folders. Review or adjust before importing.</p><textarea aria-label="Project import remappings" value={mappingText} onChange={e => setMappingText(e.target.value)} disabled={busy} placeholder="@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts/" /></details>
-      <p>Select up to 100 files, including their dependencies. Missing packages and unsupported compiler versions appear as compiler diagnostics; dependencies are not installed automatically.</p>
+      <p>Select up to 100 files, including their dependencies. Studio automatically selects Solidity 0.8.36 or 0.7.6 from source pragmas. Missing packages and incompatible compiler versions appear as diagnostics; dependencies are not installed automatically.</p>
       {hasWorkspace && <label><input type="checkbox" checked={merge} onChange={e => setMerge(e.target.checked)} disabled={busy} /> Add to current workspace (conflicting paths are rejected)</label>}
       <button className="project-import-button" disabled={busy || !selected.size || selected.size > MAX_PROJECT_FILES || bytes > MAX_PROJECT_BYTES} onClick={() => void importSelected()}>Import selected Solidity files</button>
     </section>}

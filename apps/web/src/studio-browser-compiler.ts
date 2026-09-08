@@ -1,10 +1,15 @@
-import type { StudioRequest, StudioResult } from "@codevis/shared";
+import { selectStudioCompiler, compilerSelectionFailure, type StudioRequest, type StudioResult } from "@codevis/shared";
 let worker: Worker | undefined;
+let workerVersion = "";
 
 /** One request at a time; aborting kills synchronous compiler work off the UI thread. */
 export function compileInBrowser(operation: string, request: StudioRequest, signal: AbortSignal): Promise<StudioResult> {
   return new Promise((resolve, reject) => {
     if (signal.aborted) { reject(new DOMException("Aborted", "AbortError")); return; }
+    let version;
+    try { version = selectStudioCompiler(request.sources); } catch (error) { resolve(compilerSelectionFailure(request, error)); return; }
+    if (worker && version !== workerVersion) { worker.terminate(); worker = undefined; }
+    workerVersion = version;
     worker ??= new Worker(new URL("./studio-browser-worker.ts", import.meta.url));
     const current = worker;
     const clean = () => { clearTimeout(timeout); signal.removeEventListener("abort", abort); current.onmessage = null; current.onerror = null; };

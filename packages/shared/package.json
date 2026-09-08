@@ -12,10 +12,12 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "devDependencies": {
+    "@types/semver": "^7.8.0",
     "typescript": "^5.9.2",
     "vitest": "^3.2.4"
   },
   "dependencies": {
-    "ethers": "^6.17.0"
+    "ethers": "^6.17.0",
+    "semver": "^7.8.5"
   }
 }

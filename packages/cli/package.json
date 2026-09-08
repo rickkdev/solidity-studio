@@ -17,7 +17,8 @@
     "@openai/codex-sdk": "^0.147.0",
     "chokidar": "^4.0.3",
     "ethers": "^6.17.0",
-    "solc": "^0.8.36"
+    "solc": "^0.8.36",
+    "solc-0.7": "npm:solc@^0.7.6"
   },
   "devDependencies": {
     "@types/node": "^22.17.1",
