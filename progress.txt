@@ -141,3 +141,28 @@ Started: Mon Aug 10 15:25:03 CEST 2026
 - Quality checks run: `npm run typecheck`, `npm run lint`, `npm test` (39 workspace tests passed), `npm run build`, `npm run test:browser --workspace @codevis/web` (3 Chromium tests passed), `npm run test:e2e`, and `git diff --check` all passed.
 - Learnings for future iterations: Keep recovery actions at the state boundary that failed: reload graph/SSE state from the app, re-run Foundry from the graph, and let compiler recovery remain driven by save-triggered watch analysis; keep the visual legend explicit about evidence provenance and status semantics.
 ---
+
+
+## Solidity Studio rewrite — 2026-09-08
+The previous PRD contained 18 completed repository-first stories (US-001 through US-018). Their implementation and prior log remain available; the replacement PRD follows the user-approved two-way node editor scope. Existing uncommitted explorer/flowchart/explanation work has been retained.
+
+Implemented a separate source-preserving studio model, compiler adapter, standalone worker service, and Blueprint editor. Reuse compiler-resolved AST types and source spans; do not generate Solidity by walking arbitrary graph edges. Structured edits patch original source and compile the candidate transactionally. solc src offsets are UTF-8 bytes; convert them before indexing JavaScript strings. Low-level calls are identified by typeIdentifier as well as typeString.
+
+Foundry equivalence tests use a temporary standard-json adapter around the installed solc package, avoiding compiler downloads. Browser tests use isolated ports 4273/4275, leaving existing local servers alone. Repository watch explicitly advertises its UI mode through /api/studio/status.
+
+Verification complete: 58 unit/integration tests, 9 browser tests, workspace type checks/lint, production builds, and git diff --check passed. The final connection-draft interaction also passed the 6-test studio browser suite. Foundry compares original and graph-edited contracts with 64 fuzz runs plus the vault deposit/withdrawal case. The development launcher and Vite proxy were smoke-tested on isolated ports. New STUDIO-001 through STUDIO-007 stories are complete within the documented source-block coverage.
+
+## Coin connectivity fix — 2026-09-08
+Reproduced the user-supplied Coin sample: it compiles under installed solc 0.8.36; the old opening view displayed four unconnected declarations while execution edges were confined to function views. Imports now open an ordinary function first; contract overview includes clickable function entries and compiler-resolved declaration relationships. Fixed the missing execution target handle on implicit completion nodes. Preserved separate overview/function positions and excluded reference edges from function execution views. Exact sample compiler regression and real-browser edge-path regression added. Verified workspace typecheck/build, 12 compiler tests and all 7 studio browser tests.
+
+## Function execution and trace playback — 2026-09-08
+Implemented STUDIO-008 through STUDIO-010: typed arguments and play controls on entry nodes, constructor/caller/payable inputs, persistent isolated Anvil deployments, decoded returns/events/reverts, raw storage changes, and a console with transaction history. Actual EVM instruction source maps drive glowing execution paths with pause, step, replay, speed and finish controls. Internal calls and repeated loop visits are traced; unknown external/compiler steps and truncation are disclosed. Replay never submits a transaction. Source edits, contract changes and reset discard transient sandbox state.
+
+Runtime uses Cancun bytecode and a loopback-only Anvil process per sandbox, with 500,000 gas calls, 2,000,000 gas deployments, four-session capacity and 20-minute idle expiry. Request IDs prevent duplicate submissions; reset/shutdown stop owned children. Constructor failures and exhausted-gas calls retain useful diagnostics. ABI arrays/tuples use JSON, with large integers quoted to avoid precision loss.
+
+Verification: 64 unit/integration tests, all 11 browser tests, workspace typecheck/lint and production builds passed. The typed-wiring browser regression also passed three repeated runs after removing a delayed viewport movement. Fixed canvas grid overflow that intercepted console controls. Restarted the owned Studio service on port 4280 and verified live Coin execution produced four trace steps and one storage change, then reset the smoke-test sandbox. Existing user services were left running.
+
+## Token factory sample and steady trace camera — 2026-09-08
+Prefilled the Convert to nodes input with a self-contained TokenFactory demo and added a restore-example button. Tokens use independent IDs/balances within one contract, with configurable mint/burn/pause flags and callable transfer, balance and supply functions. The sample and welcome text explicitly distinguish this from deploying separate ERC-20 contracts. Live sandbox verification covered token creation, minting, burning, balance 80, paused transfer rejection and disabled mint rejection; the sandbox was reset afterward.
+
+Removed per-step camera centering. Playback fits the recorded function path once, keeps the viewport steady, and leaves a faint glow on visited connections. Default step duration is 1000 ms, with 1800 ms slow and 600 ms fast options; moving wire glow follows the selected speed. Added a browser assertion that stepping preserves the viewport transform. Production build and all eight Studio browser tests passed; git diff --check passed.

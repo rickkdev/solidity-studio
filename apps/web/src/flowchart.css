@@ -1,0 +1,15 @@
+.react-flow__node.flow-node--decision {
+  min-height: 105px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 0;
+  background: #2a2412;
+  clip-path: polygon(50% 0, 100% 50%, 50% 100%, 0 50%);
+  padding: 17px 27px;
+}
+
+.react-flow__node.flow-node--decision .flow-node__content {
+  width: 100%;
+  min-height: 65px;
+}

@@ -1,293 +1,146 @@
 {
-  "project": "Code Visualizer",
+  "project": "Solidity Studio",
   "branchName": "ralph/solidity-code-visualizer",
-  "description": "Build a shell-native visual IDE that turns a Solidity codebase into a live, interactive graph of files, contracts, functions, relationships, edits, and Foundry test activity. The graph is the primary interface while source code remains available for inspection.",
+  "description": "A local, two-way Solidity editor: paste or create contracts, edit structured Blueprint nodes with typed ports, inspect exact source and export Solidity without losing unsupported constructs. Execute public functions in local sandboxes with typed inputs, trace replay and console output.",
   "userStories": [
     {
-      "id": "US-001",
-      "title": "Create the application workspace",
-      "description": "As a contributor, I want a TypeScript workspace for the CLI, local service, shared graph model, and web UI so later features have a maintainable foundation.",
+      "id": "STUDIO-001",
+      "title": "Create the source-preserving program model",
+      "description": "Create the source-preserving program model",
       "acceptanceCriteria": [
-        "The repository contains separate packages or applications for the CLI/local service, web UI, and shared graph types",
-        "A single documented install command installs all workspace dependencies",
-        "Root scripts run type checking, tests, and production builds across the workspace",
-        "A minimal web page can be started locally from a root script",
-        "README documents prerequisites and local development commands",
-        "All automated tests, type checks, and builds pass"
+        "Represent files, contracts, functions, symbols, typed expression ports, statement regions, source spans and execution/value relationships",
+        "Keep layout independent of program semantics and preserve opaque syntax",
+        "Preserve source bytes when no changes are made"
       ],
       "priority": 1,
       "passes": true,
-      "notes": "Use React and TypeScript for the web UI and Node.js with TypeScript for the CLI/local service. Keep the initial workspace minimal."
+      "notes": "Rewrite acceptance; supersedes the completed repository-first PRD. Advanced syntax stays source-backed rather than being silently simplified. Verified by compiler, Foundry, browser and repository regression checks."
     },
     {
-      "id": "US-002",
-      "title": "Define the unified graph model",
-      "description": "As a feature developer, I want a language-independent graph schema so static analysis, runtime events, and future language adapters can use the same representation.",
+      "id": "STUDIO-002",
+      "title": "Compile and inspect imported Solidity",
+      "description": "Compile and inspect imported Solidity",
       "acceptanceCriteria": [
-        "Shared types define graph nodes, graph edges, source locations, node statuses, and serializable metadata",
-        "Node kinds include repository, directory, file, contract, function, modifier, event, test, task, command, and finding",
-        "Edge kinds include contains, imports, inherits, calls, reads, writes, applies_modifier, tests, and modifies",
-        "Statuses include idle, planned, inspecting, active, passed, failed, warning, and deleted",
-        "Runtime validation rejects malformed graph payloads with actionable errors",
-        "Unit tests cover valid graphs, invalid references, duplicate IDs, and serialization"
+        "Analyze an in-memory source-file map with the installed solc compiler",
+        "Show branch, loop, break, continue, return and explicit revert paths",
+        "Identify state effects and external calls and resolve call navigation using compiler references",
+        "Report missing imports and incompatible pragmas without fetching external dependencies"
       ],
       "priority": 2,
       "passes": true,
-      "notes": "Stable IDs must be deterministic for the same repository content so UI state survives re-analysis."
+      "notes": "Rewrite acceptance; supersedes the completed repository-first PRD. Advanced syntax stays source-backed rather than being silently simplified. Verified by compiler, Foundry, browser and repository regression checks."
     },
     {
-      "id": "US-003",
-      "title": "Add a Solidity analysis fixture",
-      "description": "As a contributor, I want a small representative Solidity project fixture so analyzers and visual behavior can be tested deterministically.",
+      "id": "STUDIO-003",
+      "title": "Generate Solidity from node edits",
+      "description": "Generate Solidity from node edits",
       "acceptanceCriteria": [
-        "A fixture project contains at least two imported Solidity files and two related contracts",
-        "The fixture demonstrates inheritance, public and internal functions, a modifier, state reads and writes, an event, a custom error, and an external call",
-        "The fixture includes Foundry tests with both passing and intentionally failing test cases",
-        "Fixture source is documented as test data and is not included in production builds",
-        "An automated check confirms the expected fixture files are available"
+        "Support declaration, input, statement insertion/deletion, typed value wiring and sibling execution reordering",
+        "Preserve untouched text and comments using source-range edits",
+        "Validate generated code through solc and reject invalid edits",
+        "Do not duplicate effectful expressions or allow unstructured execution wiring"
       ],
       "priority": 3,
       "passes": true,
-      "notes": "Keep the contracts deliberately small; they exist to cover analysis behavior, not to model production-safe financial logic."
+      "notes": "Rewrite acceptance; supersedes the completed repository-first PRD. Advanced syntax stays source-backed rather than being silently simplified. Verified by compiler, Foundry, browser and repository regression checks."
     },
     {
-      "id": "US-004",
-      "title": "Discover Solidity source files",
-      "description": "As a Solidity developer, I want the tool to discover source files from a project path so I can analyze a repository without manual configuration.",
+      "id": "STUDIO-004",
+      "title": "Serve standalone studio",
+      "description": "Serve standalone studio",
       "acceptanceCriteria": [
-        "The analyzer accepts an absolute or relative project directory",
-        "It recursively discovers .sol files while ignoring .git, node_modules, out, cache, and configurable ignored paths",
-        "All returned paths are normalized relative to the project root and sorted deterministically",
-        "Missing directories, unreadable paths, and projects with no Solidity files produce actionable errors",
-        "Unit tests cover discovery, default ignores, custom ignores, and error cases"
+        "Add codevis studio without a repository argument",
+        "Serve analyze/generate endpoints from a loopback-only compiler worker with bounded requests",
+        "Start Vite and the compiler together using npm run dev",
+        "Retain analyze, watch and test commands"
       ],
       "priority": 4,
       "passes": true,
-      "notes": "Do not require the target project to be a Foundry project for static discovery."
+      "notes": "Rewrite acceptance; supersedes the completed repository-first PRD. Advanced syntax stays source-backed rather than being silently simplified. Verified by compiler, Foundry, browser and repository regression checks."
     },
     {
-      "id": "US-005",
-      "title": "Parse Solidity files into structural nodes",
-      "description": "As a Solidity developer, I want files, contracts, functions, modifiers, events, errors, and state variables extracted so I can inspect code structure visually.",
+      "id": "STUDIO-005",
+      "title": "Build the Blueprint workspace",
+      "description": "Build the Blueprint workspace",
       "acceptanceCriteria": [
-        "Analysis uses Solidity compiler output or a compatible Solidity AST rather than regular expressions",
-        "The fixture produces nodes for source files, contracts, functions, modifiers, events, custom errors, and state variables",
-        "Contract metadata includes kind and inheritance names; function metadata includes visibility, mutability, and payable state",
-        "Every source-backed node contains an accurate file, start position, and end position",
-        "Parser diagnostics include file and source location when available",
-        "Snapshot or equivalent tests verify deterministic output for the fixture"
+        "Provide paste, import, blank-contract and example entry points",
+        "Provide contract/function navigation, typed ports, node palette and structured configuration forms",
+        "Expose source selection, node inspection, call navigation, pan/zoom, focus and auto-layout",
+        "Collapse expression detail initially and reveal it through selection or All values"
       ],
       "priority": 5,
       "passes": true,
-      "notes": "Preserve compiler diagnostics rather than silently dropping files that fail to parse."
+      "notes": "Rewrite acceptance; supersedes the completed repository-first PRD. Advanced syntax stays source-backed rather than being silently simplified. Verified by compiler, Foundry, browser and repository regression checks."
     },
     {
-      "id": "US-006",
-      "title": "Build Solidity dependency relationships",
-      "description": "As a reviewer, I want imports, containment, and inheritance represented as graph edges so I can understand the codebase architecture.",
+      "id": "STUDIO-006",
+      "title": "Synchronize and persist editing",
+      "description": "Synchronize and persist editing",
       "acceptanceCriteria": [
-        "The graph contains repository, directory, file, and contract hierarchy using contains edges",
-        "Resolved Solidity imports create imports edges between file nodes",
-        "Resolved base contracts create inherits edges between contract nodes",
-        "Unresolved imports or inheritance references are reported as diagnostics without crashing analysis",
-        "Duplicate relationships are not emitted",
-        "Automated tests verify all expected fixture relationships"
+        "Synchronize code and node edits using revision-tagged compilation and ignore superseded responses",
+        "Retain the last valid canvas while source is invalid and the accepted source while a node draft is invalid",
+        "Support undo/redo, local source-draft persistence, workspace JSON restoration and Solidity download",
+        "Retain positions for stable nodes across edits"
       ],
       "priority": 6,
       "passes": true,
-      "notes": "Keep unresolved references visible in diagnostics so users can distinguish incomplete analysis from missing relationships."
+      "notes": "Rewrite acceptance; supersedes the completed repository-first PRD. Advanced syntax stays source-backed rather than being silently simplified. Verified by compiler, Foundry, browser and repository regression checks."
     },
     {
-      "id": "US-007",
-      "title": "Analyze function behavior",
-      "description": "As a smart-contract reviewer, I want calls, state access, modifiers, and value-related behavior mapped so I can see security-relevant interactions.",
+      "id": "STUDIO-007",
+      "title": "Verify the round trip",
+      "description": "Verify the round trip",
       "acceptanceCriteria": [
-        "Resolved internal and external function invocations create calls edges",
-        "State-variable access creates distinct reads and writes edges",
-        "Modifier usage creates applies_modifier edges",
-        "Function metadata identifies external calls and value-sending calls when the AST provides enough evidence",
-        "Ambiguous or unresolved calls are retained as diagnostics or explicitly marked metadata rather than guessed",
-        "Automated tests verify the fixture's calls, reads, writes, modifier usage, and value-related metadata"
+        "Test source preservation, Unicode offsets, opaque syntax, wiring validation and structured loops",
+        "Compare generated and original Solidity return values, storage, events and reverts through Foundry",
+        "Cover authoring, inspection, recovery, persistence and typed wiring in real browser tests",
+        "Pass repository regression tests, type checks, lint and production builds"
       ],
       "priority": 7,
       "passes": true,
-      "notes": "Static analysis is evidence, not proof of runtime behavior. The UI must later label it accordingly."
+      "notes": "Rewrite acceptance; supersedes the completed repository-first PRD. Advanced syntax stays source-backed rather than being silently simplified. Verified by compiler, Foundry, browser and repository regression checks."
     },
     {
-      "id": "US-008",
-      "title": "Expose analysis through the shell",
-      "description": "As a developer, I want to run one command in a Solidity repository and receive a graph so the product is useful from the shell.",
+      "id": "STUDIO-008",
+      "title": "Execute functions in isolated local sandboxes",
+      "description": "Execute functions in isolated local sandboxes",
       "acceptanceCriteria": [
-        "A codevis analyze [path] command analyzes the supplied path or the current directory by default",
-        "The command can write the validated graph as JSON to stdout or a requested output file",
-        "Human-readable progress and diagnostics go to stderr so stdout remains machine-readable",
-        "The command exits non-zero for invalid input or analysis failure and zero for successful analysis",
-        "codevis --help documents command usage and available options",
-        "An integration test analyzes the fixture and validates the resulting graph"
+        "Compile deployment/runtime artifacts with ABI and source maps",
+        "Deploy from a funded local account and preserve state between runs",
+        "Support constructor arguments, callers, payable wei, arrays/tuples and decoded return/event/revert data",
+        "Bound execution gas, expire idle sessions and stop Anvil children on reset/shutdown"
       ],
       "priority": 8,
       "passes": true,
-      "notes": "The executable may initially run through the workspace package script, but its public command name must be codevis."
+      "notes": "Implemented local Anvil execution and recorded source-map playback. Verified by 64 unit/integration tests and 11 browser tests, including Coin mint/send/revert/reset, branches, repeated internal calls, constructors, payable calls, arrays, and gas exhaustion."
     },
     {
-      "id": "US-009",
-      "title": "Render the repository graph",
-      "description": "As a developer, I want an interactive visual map of the analyzed repository so the system is understandable without reading every file.",
+      "id": "STUDIO-009",
+      "title": "Play functions and replay actual execution",
+      "description": "Play functions and replay actual execution",
       "acceptanceCriteria": [
-        "The web UI loads a graph from the local service and renders nodes and directed edges on an interactive canvas",
-        "Files, contracts, functions, modifiers, events, tests, and findings have visually distinct node treatments",
-        "Import, inheritance, call, read, write, test, and containment relationships can be visually distinguished",
-        "Users can pan, zoom, fit the graph to view, and reset the viewport",
-        "Loading, empty, and analysis-error states are clearly displayed",
-        "The fixture graph is verified with component tests and a browser smoke test"
+        "Provide typed run inputs and a play button on function entry nodes",
+        "Animate mapped nodes and execution wires from EVM traces, including failure paths",
+        "Provide pause, step, replay, speed and finish controls without reexecuting transactions",
+        "Keep inputs accessible after the viewport follows a trace and prevent editing during execution"
       ],
       "priority": 9,
       "passes": true,
-      "notes": "Use React Flow or an equivalent maintained graph canvas. Prioritize clarity over decorative animation."
+      "notes": "Implemented local Anvil execution and recorded source-map playback. Verified by 64 unit/integration tests and 11 browser tests, including Coin mint/send/revert/reset, branches, repeated internal calls, constructors, payable calls, arrays, and gas exhaustion."
     },
     {
-      "id": "US-010",
-      "title": "Add progressive graph detail",
-      "description": "As a developer working in a large repository, I want to expand and collapse code structure so I can move between architecture and function-level detail.",
+      "id": "STUDIO-010",
+      "title": "Show a useful execution console",
+      "description": "Show a useful execution console",
       "acceptanceCriteria": [
-        "The initial repository view groups or collapses function-level nodes under their owning file or contract",
-        "Users can expand a file or contract to reveal its contained nodes and collapse it again",
-        "Edges connected to hidden nodes are summarized or hidden without pointing to nonexistent visible endpoints",
-        "Expansion state remains stable while the same graph is open",
-        "A fit-to-selection action focuses the viewport on an expanded group",
-        "Component tests cover expand, collapse, and connected-edge behavior"
+        "Show success/revert status, events, returns, gas and changed storage slots",
+        "Preserve console history and local state across function calls",
+        "Clearly report unmapped or truncated trace coverage",
+        "Verify Coin mint/send/revert/reset, actual branches, internal calls, arrays, constructors and gas exhaustion with runtime/browser tests"
       ],
       "priority": 10,
       "passes": true,
-      "notes": "This is the first defense against unusable hairball graphs; avoid rendering every node by default."
-    },
-    {
-      "id": "US-011",
-      "title": "Inspect nodes and source code",
-      "description": "As a reviewer, I want to select a visual node and inspect its concrete source evidence so every diagram element remains trustworthy.",
-      "acceptanceCriteria": [
-        "Selecting a node opens a detail panel with its kind, status, metadata, and incoming and outgoing relationships",
-        "Source-backed nodes show the relevant source excerpt with the node's source range highlighted",
-        "The panel displays the repository-relative file path and line numbers",
-        "A copy-location action copies a path:line reference",
-        "Nodes without source locations show an explicit explanation instead of a broken source view",
-        "Component tests cover source-backed and source-less node inspection"
-      ],
-      "priority": 11,
-      "passes": true,
-      "notes": "Reading source is secondary to the graph but must always be one selection away."
-    },
-    {
-      "id": "US-012",
-      "title": "Filter and search the graph",
-      "description": "As a reviewer, I want to find symbols and isolate relationship types so I can answer focused questions in a nontrivial codebase.",
-      "acceptanceCriteria": [
-        "Search matches node labels and repository-relative paths without case sensitivity",
-        "Selecting a search result reveals hidden ancestors, selects the node, and focuses the viewport",
-        "Users can toggle node kinds and edge kinds independently",
-        "A security-focused preset shows external calls, state writes, value-related functions, and findings",
-        "A clear-filters action restores the default view",
-        "Component tests verify search, focus, filter toggles, preset behavior, and reset"
-      ],
-      "priority": 12,
-      "passes": true,
-      "notes": "The security preset is a view over evidence, not an automated vulnerability verdict."
-    },
-    {
-      "id": "US-013",
-      "title": "Launch the visualizer with a watch command",
-      "description": "As a developer, I want one shell command to start the local service and UI for my repository so the visual IDE is easy to enter.",
-      "acceptanceCriteria": [
-        "A codevis watch [path] command starts the local analysis service and serves the web UI",
-        "The command prints the local URL and analyzed project path",
-        "The service binds to loopback by default and supports a configurable available port",
-        "The UI receives the initial validated graph without requiring a manual file import",
-        "SIGINT and SIGTERM close the HTTP server and filesystem resources cleanly",
-        "An integration test starts the command against the fixture, fetches the UI and graph, and shuts it down"
-      ],
-      "priority": 13,
-      "passes": true,
-      "notes": "Do not expose repository source over a non-loopback interface by default."
-    },
-    {
-      "id": "US-014",
-      "title": "Visualize live file changes",
-      "description": "As a developer coding manually or with an agent, I want the graph to react to file changes so I can see which part of the system is being changed.",
-      "acceptanceCriteria": [
-        "The watch service detects created, modified, and deleted Solidity files using the same ignore rules as static discovery",
-        "Changes trigger a debounced incremental or full re-analysis without restarting the service",
-        "Graph updates are pushed to connected browsers over a live transport",
-        "Affected nodes visibly transition through active to completed, warning, failed, or deleted states",
-        "Rapid writes do not produce overlapping analyses or stale graph updates",
-        "Integration tests cover create, modify, delete, syntax-error, and recovery flows"
-      ],
-      "priority": 14,
-      "passes": true,
-      "notes": "WebSockets or server-sent events are acceptable. Favor correctness and ordered updates over premature incremental-analysis optimization."
-    },
-    {
-      "id": "US-015",
-      "title": "Record and display work events",
-      "description": "As a developer, I want a timeline of analysis and work states so I can understand what the tool or coding agent is doing over time.",
-      "acceptanceCriteria": [
-        "A versioned event schema supports plan created, step started, file read, file edit started, file edit completed, command started, test passed, test failed, finding created, and work completed",
-        "The local service records filesystem and analysis activity as timestamped events for the current session",
-        "The UI shows a chronological timeline with event type, message, timestamp, and linked graph targets",
-        "Selecting a linked event reveals and focuses its target nodes",
-        "Malformed external events are rejected without interrupting the active session",
-        "Unit and component tests cover schema validation, ordering, rendering, and graph linking"
-      ],
-      "priority": 15,
-      "passes": true,
-      "notes": "Define the protocol independently of terminal-text parsing so agents can emit semantic events later. Persistent session history is out of scope for this story."
-    },
-    {
-      "id": "US-016",
-      "title": "Discover and run Foundry tests",
-      "description": "As a Solidity developer, I want to run Foundry tests from the visualizer so test activity is connected to the contracts it validates.",
-      "acceptanceCriteria": [
-        "The tool detects whether forge is available and whether the selected repository is a Foundry project",
-        "A codevis test [optional test filter] command runs tests without invoking a shell interpreter with unsanitized user input",
-        "Foundry JSON or another stable machine-readable output is parsed into test names, duration, pass, fail, and skipped results",
-        "Compiler errors, test failures, and missing Foundry prerequisites produce actionable diagnostics",
-        "The command exits non-zero when compilation or tests fail",
-        "Integration tests use the fixture or recorded deterministic Foundry output and cover passing, failing, filtered, and unavailable cases"
-      ],
-      "priority": 16,
-      "passes": true,
-      "notes": "Keep command execution local and explicit. Wallets and public-chain transactions are not part of the MVP."
-    },
-    {
-      "id": "US-017",
-      "title": "Map Foundry results onto the graph",
-      "description": "As a reviewer, I want tests and failures connected to affected code so I can see verification coverage and failures in context.",
-      "acceptanceCriteria": [
-        "Discovered tests appear as test nodes with tests edges to resolved contracts or functions",
-        "Running tests from the UI or CLI streams started, passed, failed, and completed events to the live session",
-        "Active tests animate their nodes and relevant edges; completed tests become green and failed tests become red",
-        "Failure messages and compiler diagnostics are attached to the most specific resolvable graph node and shown in its detail panel",
-        "Unresolved test targets and diagnostics remain accessible in the timeline",
-        "Integration and browser tests verify passing, failing, and unresolved result visualization"
-      ],
-      "priority": 17,
-      "passes": true,
-      "notes": "Runtime-observed relationships must look different from statically inferred relationships."
-    },
-    {
-      "id": "US-018",
-      "title": "Deliver the Solidity-first MVP workflow",
-      "description": "As a new user, I want a polished end-to-end workflow and sample project so I can understand and evaluate the visualizer quickly.",
-      "acceptanceCriteria": [
-        "README provides installation, codevis analyze, codevis watch, and codevis test walkthroughs",
-        "A documented demo flow opens the fixture, explores a contract and function, edits a file, and observes a Foundry test result",
-        "The UI explains the visual legend for node kinds, edge kinds, static relationships, runtime relationships, and statuses",
-        "No-data, missing-tool, compiler-error, and disconnected-live-session states offer a recovery action",
-        "An end-to-end smoke test covers launching from the shell through rendering the fixture graph and receiving one live update",
-        "All workspace tests, type checks, lint checks, production builds, and the end-to-end smoke test pass"
-      ],
-      "priority": 18,
-      "passes": true,
-      "notes": "MVP completion excludes wallet connection, public-chain interaction, Slither integration, persistent sessions, non-Solidity languages, and drag-and-drop code generation."
+      "notes": "Implemented local Anvil execution and recorded source-map playback. Verified by 64 unit/integration tests and 11 browser tests, including Coin mint/send/revert/reset, branches, repeated internal calls, constructors, payable calls, arrays, and gas exhaustion."
     }
   ]
 }

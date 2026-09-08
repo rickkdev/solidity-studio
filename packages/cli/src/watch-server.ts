@@ -3,11 +3,12 @@ import { access, readFile, stat } from "node:fs/promises";
 import { createServer, type Server } from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import { createStableNodeId, parseGraph, parseWorkEvent, serializeGraph, type Graph, type GraphNodeStatus, type WorkEvent, type WorkEventType } from "@codevis/shared";
+import { createStableNodeId, parseGraph, parseWorkEvent, serializeGraph, type ExplanationCollection, type FunctionFlowchart, type Graph, type GraphNodeStatus, type WorkEvent, type WorkEventType } from "@codevis/shared";
 import { watch, type FSWatcher } from "chokidar";
 import { analyzeSolidityStructure, type SolidityDiagnostic } from "./analyze-solidity-structure.js";
 import { addFoundryTests, applyFoundryResults, setTestsActive } from "./map-foundry-results.js";
 import { runFoundryTests, type FoundryTestRun } from "./run-foundry-tests.js";
+import { createExplanationManager, type ExplanationManager, type ExplanationProvider } from "./explanation-service.js";
 
 const DEFAULT_WEB_ROOT = fileURLToPath(new URL("../../../apps/web/dist/", import.meta.url));
 
@@ -17,6 +18,9 @@ export interface WatchServerOptions {
   readonly ignoredPaths?: readonly string[];
   readonly debounceMs?: number;
   readonly testRunner?: (projectPath: string, filter?: string) => Promise<FoundryTestRun>;
+  readonly explain?: boolean;
+  readonly explanationProvider?: ExplanationProvider;
+  readonly explanationCacheRoot?: string;
 }
 
 export interface WatchServer {
@@ -58,6 +62,11 @@ export async function startWatchServer(
   if (errors.length > 0) throw new WatchAnalysisError(errors);
 
   let graph = addFoundryTests(await graphFromAnalysis(projectPath, analysis));
+  let flowcharts = analysis.flowcharts;
+  let explanationManager: ExplanationManager | undefined;
+  const explanationClients = new Set<import("node:http").ServerResponse>();
+  const disabledExplanations: ExplanationCollection = { schemaVersion: 1, enabled: false, items: [] };
+  if (options.explain) explanationManager = await createExplanationManager(graph, options.explanationProvider, options.explanationCacheRoot);
   const workEvents: WorkEvent[] = [];
   let eventSequence = 0;
   const addEvent = (type: WorkEventType, message: string, targetIds: readonly string[] = [], metadata: WorkEvent["metadata"] = {}) => {
@@ -73,7 +82,7 @@ export async function startWatchServer(
   const clients = new Set<import("node:http").ServerResponse>();
 
   const server = createServer((request, response) => {
-    void handleRequest(request, response, webRoot, () => graph, clients, (event) => {
+    void handleRequest(request, response, webRoot, () => graph, () => flowcharts, clients, explanationClients, () => explanationManager?.collection() ?? disabledExplanations, (nodeId) => explanationManager?.retry(nodeId) ?? false, (nodeId) => explanationManager?.prioritize(nodeId) ?? false, (event) => {
       workEvents.push(event);
       workEvents.sort((a, b) => a.timestamp.localeCompare(b.timestamp) || a.id.localeCompare(b.id));
       graph = withWorkEvents(graph, workEvents);
@@ -98,6 +107,7 @@ export async function startWatchServer(
       return run;
     });
   });
+  const unsubscribeExplanations = explanationManager?.subscribe((collection) => broadcastExplanations(explanationClients, collection));
   await listen(server, port);
   const address = server.address();
   if (!address || typeof address === "string") throw new Error("Could not determine watch server address.");
@@ -126,6 +136,8 @@ export async function startWatchServer(
           } else {
             const next = await graphFromAnalysis(projectPath, nextAnalysis);
             graph = mergeChangeStatuses(graph, addFoundryTests(next), changes);
+            flowcharts = nextAnalysis.flowcharts;
+            explanationManager?.updateGraph(graph);
           }
         } catch (error) {
           graph = withStatuses(graph, changes, "failed", [{ severity: "error", message: error instanceof Error ? error.message : String(error) }]);
@@ -156,7 +168,10 @@ export async function startWatchServer(
       if (timer) clearTimeout(timer);
       await watcher.close();
       await queued;
+      unsubscribeExplanations?.();
+      await explanationManager?.close();
       clients.forEach((client) => client.end());
+      explanationClients.forEach((client) => client.end());
       await closeServer(server);
     },
   };
@@ -167,16 +182,57 @@ async function handleRequest(
   response: import("node:http").ServerResponse,
   webRoot: string,
   currentGraph: () => Graph,
+  currentFlowcharts: () => readonly FunctionFlowchart[],
   clients: Set<import("node:http").ServerResponse>,
+  explanationClients: Set<import("node:http").ServerResponse>,
+  currentExplanations: () => ExplanationCollection,
+  retryExplanation: (nodeId: string) => boolean,
+  prioritizeExplanation: (nodeId: string) => boolean,
   recordExternalEvent: (event: WorkEvent) => void,
   runTests: (filter?: string) => Promise<FoundryTestRun>,
 ): Promise<void> {
   try {
     const requestUrl = request.url ?? "/";
-    const pathname = decodeURIComponent(new URL(requestUrl, "http://localhost").pathname);
+    const rawPathname = new URL(requestUrl, "http://localhost").pathname;
+    const pathname = decodeURIComponent(rawPathname);
+    if (pathname === "/api/studio/status") {
+      response.writeHead(200, { "content-type": "application/json" }).end(JSON.stringify({ studio: false }));
+      return;
+    }
     if (pathname === "/api/graph") {
       response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
       response.end(serializeGraph(currentGraph()));
+      return;
+    }
+    if (rawPathname.startsWith("/api/flows/")) {
+      const functionId = decodeURIComponent(rawPathname.slice("/api/flows/".length));
+      const flowchart = currentFlowcharts().find((candidate) => candidate.functionId === functionId);
+      response.writeHead(flowchart ? 200 : 404, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" }).end(JSON.stringify(flowchart ?? { error: "Flowchart not found." }));
+      return;
+    }
+    if (pathname === "/api/explanations") {
+      response.writeHead(200, { "content-type": "application/json; charset=utf-8", "cache-control": "no-store" });
+      response.end(JSON.stringify(currentExplanations()));
+      return;
+    }
+    if (pathname === "/api/explanation-events") {
+      response.writeHead(200, { "content-type": "text/event-stream", "cache-control": "no-store", connection: "keep-alive" });
+      explanationClients.add(response);
+      response.write(`data: ${JSON.stringify(currentExplanations())}\n\n`);
+      response.on("close", () => explanationClients.delete(response));
+      return;
+    }
+    const retryMatch = pathname.match(/^\/api\/explanations\/([^/]+)\/retry$/);
+    if (retryMatch && request.method === "POST") {
+      const nodeId = decodeURIComponent(retryMatch[1]!);
+      const accepted = retryExplanation(nodeId);
+      response.writeHead(accepted ? 202 : 404, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify(accepted ? { accepted: true } : { error: "Explanation target not found." }));
+      return;
+    }
+    const prioritizeMatch = pathname.match(/^\/api\/explanations\/([^/]+)\/prioritize$/);
+    if (prioritizeMatch && request.method === "POST") {
+      prioritizeExplanation(decodeURIComponent(prioritizeMatch[1]!));
+      response.writeHead(202, { "content-type": "application/json; charset=utf-8" }).end(JSON.stringify({ accepted: true }));
       return;
     }
     if (pathname === "/api/work-events" && request.method === "POST") {
@@ -274,6 +330,11 @@ function mergeChangeStatuses(previous: Graph, next: Graph, changes: ReadonlyMap<
 
 function broadcast(clients: ReadonlySet<import("node:http").ServerResponse>, graph: Graph): void {
   const message = `data: ${serializeGraph(graph)}\n\n`;
+  clients.forEach((client) => client.write(message));
+}
+
+function broadcastExplanations(clients: ReadonlySet<import("node:http").ServerResponse>, collection: ExplanationCollection): void {
+  const message = `data: ${JSON.stringify(collection)}\n\n`;
   clients.forEach((client) => client.write(message));
 }
 

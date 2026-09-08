@@ -1,0 +1,20 @@
+export interface NodeTemplate { fields: Record<string, string>; render: (fields: Record<string, string>) => string }
+export const nodeTemplates: Record<string, NodeTemplate> = {
+  Function: { fields: { Name: "newFunction", Parameters: "uint256 amount", Returns: "", Visibility: "external", Mutability: "" }, render: f => `function ${f.Name}(${f.Parameters}) ${f.Visibility}${f.Mutability ? ` ${f.Mutability}` : ""}${f.Returns ? ` returns (${f.Returns})` : ""} {\n    }` },
+  "State variable": { fields: { Name: "value", Type: "uint256", Visibility: "public", "Initial value": "" }, render: f => `${f.Type} ${f.Visibility} ${f.Name}${f["Initial value"] ? ` = ${f["Initial value"]}` : ""};` },
+  Mapping: { fields: { Name: "balances", "Key type": "address", "Value type": "uint256", Visibility: "public" }, render: f => `mapping(${f["Key type"]} => ${f["Value type"]}) ${f.Visibility} ${f.Name};` },
+  Event: { fields: { Name: "Updated", Parameters: "uint256 value" }, render: f => `event ${f.Name}(${f.Parameters});` },
+  Constructor: { fields: { Parameters: "", Mutability: "" }, render: f => `constructor(${f.Parameters}) ${f.Mutability} {\n    }` },
+  "Check / require": { fields: { Condition: "true", Message: "Check failed" }, render: f => `require(${f.Condition}, ${JSON.stringify(f.Message)});` },
+  "If / else": { fields: { Condition: "true" }, render: f => `if (${f.Condition}) {\n        } else {\n        }` },
+  "For loop": { fields: { Initialize: "uint256 i = 0", Condition: "i < 10", Update: "i++" }, render: f => `for (${f.Initialize}; ${f.Condition}; ${f.Update}) {\n        }` },
+  "While loop": { fields: { Condition: "false" }, render: f => `while (${f.Condition}) {\n        }` },
+  "Do / while": { fields: { Condition: "false" }, render: f => `do {\n        } while (${f.Condition});` },
+  "Local value": { fields: { Name: "localValue", Type: "uint256", Value: "0" }, render: f => `${f.Type} ${f.Name} = ${f.Value};` },
+  "Assign / write": { fields: { Target: "value", Operator: "=", Value: "0" }, render: f => `${f.Target} ${f.Operator} ${f.Value};` },
+  "Function call": { fields: { Function: "newFunction", Arguments: "0" }, render: f => `${f.Function}(${f.Arguments});` },
+  "External call": { fields: { Target: "msg.sender", "ETH value (wei)": "0", Data: '""', "Success variable": "success", "Result variable": "result" }, render: f => `(bool ${f["Success variable"]}, bytes memory ${f["Result variable"]}) = address(${f.Target}).call{value: ${f["ETH value (wei)"]}}(${f.Data});` },
+  "Emit event": { fields: { Event: "Updated", Arguments: "0" }, render: f => `emit ${f.Event}(${f.Arguments});` },
+  Return: { fields: { Value: "" }, render: f => `return${f.Value ? ` ${f.Value}` : ""};` },
+  Revert: { fields: { Message: "Stopped" }, render: f => `revert(${JSON.stringify(f.Message)});` },
+};

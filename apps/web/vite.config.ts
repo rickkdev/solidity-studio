@@ -4,6 +4,8 @@ import { fileURLToPath } from "node:url";
 
 export default defineConfig({
   plugins: [react()],
+  preview: { proxy: {} },
+  server: { proxy: { "/api/studio": `http://127.0.0.1:${process.env.CODEVIS_STUDIO_PORT ?? 4174}` } },
   resolve: {
     alias: {
       "@codevis/shared": fileURLToPath(new URL("../../packages/shared/src/index.ts", import.meta.url)),

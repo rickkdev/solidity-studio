@@ -1,3 +1,4 @@
+import { startStudioServer } from "./studio-server.js";
 import { writeFile } from "node:fs/promises";
 import path from "node:path";
 import { parseGraph, serializeGraph, type Graph } from "@codevis/shared";
@@ -15,6 +16,7 @@ const HELP = `Usage: codevis <command> [path] [options]
 Analyze a Solidity project and emit its validated graph as JSON.
 
 Commands:
+  studio              Open the two-way Solidity node editor
   analyze [path]       Analyze path (defaults to the current directory)
   watch [path]         Start the local visualizer for path
   test [filter]        Run Foundry tests in the current directory
@@ -22,6 +24,7 @@ Commands:
 Options:
   -o, --output <file>  Write graph JSON to a file instead of stdout
   -p, --port <number>  Watch server port (defaults to 4173)
+  --explain            Precompute Codex explanations (sends focused source evidence)
   -h, --help           Show this help
 `;
 
@@ -37,13 +40,20 @@ export async function runCli(
       return 0;
     }
 
+    if (parsed.command === "studio") {
+      const service = await startStudioServer(parsed.port === undefined ? {} : { port: parsed.port });
+      io.stderr.write(`Solidity Studio: ${service.url}\n`);
+      await waitForShutdown(service.close);
+      return 0;
+    }
+
     if (parsed.command === "watch") {
       const project = path.resolve(parsed.projectPath);
       io.stderr.write(`Analyzing Solidity project: ${project}\n`);
       try {
         const service = await startWatchServer(
           project,
-          parsed.port === undefined ? {} : { port: parsed.port },
+          { ...(parsed.port === undefined ? {} : { port: parsed.port }), ...(parsed.explain ? { explain: true } : {}) },
         );
         io.stderr.write(`Code Visualizer: ${service.url}\n`);
         io.stderr.write(`Project: ${service.projectPath}\n`);
@@ -107,17 +117,18 @@ export async function runCli(
 }
 
 interface ParsedArguments {
-  readonly command: "analyze" | "watch" | "test";
+  readonly command: "analyze" | "watch" | "test" | "studio";
   readonly help: boolean;
   readonly projectPath: string;
   readonly outputPath?: string;
   readonly port?: number;
   readonly testFilter?: string;
+  readonly explain?: boolean;
 }
 
 function parseArguments(args: readonly string[]): ParsedArguments {
   if (args.includes("--help") || args.includes("-h")) return { command: "analyze", help: true, projectPath: "." };
-  if (args[0] !== "analyze" && args[0] !== "watch" && args[0] !== "test") {
+  if (args[0] !== "studio" && args[0] !== "analyze" && args[0] !== "watch" && args[0] !== "test") {
     throw new Error(args.length === 0
       ? "missing command. Run 'codevis --help' for usage."
       : `unknown command '${args[0]}'. Run 'codevis --help' for usage.`);
@@ -127,6 +138,7 @@ function parseArguments(args: readonly string[]): ParsedArguments {
   let outputPath: string | undefined;
   let positional: string | undefined;
   let port: number | undefined;
+  let explain = false;
   for (let index = 1; index < args.length; index += 1) {
     const argument = args[index]!;
     if (argument === "--output" || argument === "-o") {
@@ -136,13 +148,18 @@ function parseArguments(args: readonly string[]): ParsedArguments {
       outputPath = value;
       index += 1;
     } else if (argument === "--port" || argument === "-p") {
-      if (args[0] !== "watch") throw new Error(`${argument} is only available for watch.`);
+      if (args[0] !== "watch" && args[0] !== "studio") throw new Error(`${argument} is only available for watch or studio.`);
       const value = args[index + 1];
       if (!value || !/^\d+$/.test(value)) throw new Error(`${argument} requires a numeric port.`);
       port = Number(value);
       if (port < 1 || port > 65_535) throw new Error(`Invalid port '${value}'. Expected a number from 1 to 65535.`);
       index += 1;
     } else if (argument.startsWith("-")) {
+      if (argument === "--explain") {
+        if (args[0] !== "watch") throw new Error("--explain is only available for watch.");
+        explain = true;
+        continue;
+      }
       throw new Error(`unknown option '${argument}'. Run 'codevis --help' for usage.`);
     } else if (positional !== undefined) {
       throw new Error(`unexpected argument '${argument}'. Run 'codevis --help' for usage.`);
@@ -150,6 +167,7 @@ function parseArguments(args: readonly string[]): ParsedArguments {
       positional = argument;
     }
   }
+  if (args[0] === "studio" && positional !== undefined) throw new Error("studio does not take a project path. Use watch for repositories.");
   return {
     command: args[0],
     help: false,
@@ -157,6 +175,7 @@ function parseArguments(args: readonly string[]): ParsedArguments {
     ...(args[0] === "test" && positional !== undefined ? { testFilter: positional } : {}),
     ...(outputPath === undefined ? {} : { outputPath }),
     ...(port === undefined ? {} : { port }),
+    ...(explain ? { explain: true } : {}),
   };
 }
 

@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 
 test("renders the fixture graph and supports canvas controls", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Full graph" }).click();
   await expect(page.getByLabel("Repository graph for solidity-project")).toBeVisible();
   await expect(page.getByText("Vault.sol")).toBeVisible();
   await expect(page.getByText("deposit", { exact: true })).toBeHidden();
@@ -18,6 +19,7 @@ test("renders the fixture graph and supports canvas controls", async ({ page }) 
 
 test("searches and filters graph evidence", async ({ page }) => {
   await page.goto("/");
+  await page.getByRole("tab", { name: "Full graph" }).click();
   await page.getByLabel("Find symbol or path").fill("SRC/VAULT.SOL");
   await page.getByRole("button", { name: /deposit.*src\/Vault.sol/i }).click();
   await expect(page.getByLabel("Details for deposit")).toBeVisible();
@@ -40,6 +42,7 @@ test("visualizes runtime Foundry results and unresolved failures", async ({ page
     await route.fulfill({ response, json: graph });
   });
   await page.goto("/");
+  await page.getByRole("tab", { name: "Full graph" }).click();
   await expect(page.getByLabel("test testDeposit")).toHaveClass(/code-node--status-passed/);
   await expect(page.getByLabel("test testUnknown()" )).toHaveClass(/code-node--status-failed/);
   await page.getByLabel("Expand Vault").click();

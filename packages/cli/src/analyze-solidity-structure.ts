@@ -3,6 +3,12 @@ import path from "node:path";
 import solc from "solc";
 import {
   createStableNodeId,
+  parseFunctionFlowchart,
+  type FlowEdge,
+  type FlowEdgeKind,
+  type FlowNode,
+  type FlowNodeKind,
+  type FunctionFlowchart,
   type GraphEdge,
   type GraphNode,
   type GraphNodeKind,
@@ -32,6 +38,8 @@ interface AstNode {
   readonly constant?: boolean;
   readonly stateVariable?: boolean;
   readonly typeDescriptions?: { readonly typeString?: string };
+  readonly parameters?: { readonly parameters?: readonly AstNode[] };
+  readonly returnParameters?: { readonly parameters?: readonly AstNode[] };
 }
 
 interface CompilerDiagnostic {
@@ -62,6 +70,7 @@ export interface SolidityStructureAnalysis {
   readonly nodes: readonly GraphNode[];
   readonly edges: readonly GraphEdge[];
   readonly diagnostics: readonly SolidityDiagnostic[];
+  readonly flowcharts: readonly FunctionFlowchart[];
 }
 
 /** Compiles all discovered sources to a Solidity AST and extracts structural graph nodes. */
@@ -109,17 +118,108 @@ export async function analyzeSolidityStructure(
     const ast = output.sources?.[file]?.ast;
     if (ast) addBehaviorEdges(ast, nodes, edges, astNodeIds, behaviorDiagnostics);
   }
+  const flowcharts: FunctionFlowchart[] = [];
+  for (const file of files) {
+    const ast = output.sources?.[file]?.ast;
+    const text = sourceTexts.get(file)!;
+    if (ast) walkAst(ast, (candidate) => {
+      if (candidate.nodeType !== "FunctionDefinition" || candidate.id === undefined || !asAstNode(candidate.body)) return;
+      const functionId = astNodeIds.get(candidate.id);
+      if (functionId) flowcharts.push(buildFunctionFlowchart(candidate, functionId, file, text));
+    });
+  }
 
   return {
     compilerVersion: solc.version(),
     files,
     nodes,
     edges,
+    flowcharts,
     diagnostics: [
       ...(output.errors ?? []).map((diagnostic) => mapDiagnostic(diagnostic, sourceTexts)),
       ...behaviorDiagnostics,
     ],
   };
+}
+
+type PendingFlow = { readonly id: string; readonly kind: FlowEdgeKind };
+
+function buildFunctionFlowchart(fn: AstNode, functionId: string, file: string, text: string): FunctionFlowchart {
+  const nodes: FlowNode[] = [];
+  const edges: FlowEdge[] = [];
+  let sequence = 0;
+  const location = (node: AstNode) => { const [start, length] = parseSrc(node.src ?? fn.src!); return sourceLocation(file, start, start + length, text); };
+  const addNode = (kind: FlowNodeKind, label: string, ast: AstNode): string => { const id = `${functionId}:flow:${++sequence}`; nodes.push({ id, kind, label, source: location(ast) }); return id; };
+  const connect = (incoming: readonly PendingFlow[], target: string) => incoming.forEach(({ id: source, kind }) => edges.push({ id: `${source}:${target}:${kind}`, source, target, kind }));
+  const labelFor = (node: AstNode, fallback: string) => { const [start, length] = parseSrc(node.src ?? "0:0"); const raw = Buffer.from(text).subarray(start, start + length).toString("utf8").replace(/\s+/g, " ").trim(); return raw.length > 92 ? `${raw.slice(0, 89)}…` : raw || fallback; };
+  const statements = (node: AstNode | undefined): AstNode[] => (node?.nodeType === "Block" || node?.nodeType === "YulBlock") && Array.isArray(node.statements) ? (node.statements as AstNode[]) : node ? [node] : [];
+
+  const buildSequence = (items: readonly AstNode[], initial: readonly PendingFlow[]): PendingFlow[] => {
+    let incoming = [...initial];
+    for (const statement of items) incoming = buildStatement(statement, incoming);
+    return incoming;
+  };
+  const buildStatement = (statement: AstNode, incoming: readonly PendingFlow[]): PendingFlow[] => {
+    if (statement.nodeType === "Block" || statement.nodeType === "YulBlock") return buildSequence(statements(statement), incoming);
+    if (statement.nodeType === "InlineAssembly") return buildSequence(statements(asAstNode(statement.AST)), incoming);
+    if (statement.nodeType === "IfStatement") {
+      const condition = asAstNode(statement.condition) ?? statement;
+      const id = addNode("decision", labelFor(condition, "condition"), condition); connect(incoming, id);
+      const yes = buildSequence(statements(asAstNode(statement.trueBody)), [{ id, kind: "yes" }]);
+      const falseBody = asAstNode(statement.falseBody);
+      const no = falseBody ? buildSequence(statements(falseBody), [{ id, kind: "no" }]) : [{ id, kind: "no" as const }];
+      return [...yes, ...no];
+    }
+    if (statement.nodeType === "YulIf") {
+      const condition = asAstNode(statement.condition) ?? statement;
+      const id = addNode("decision", labelFor(condition, "assembly condition"), condition); connect(incoming, id);
+      const yes = buildSequence(statements(asAstNode(statement.body)), [{ id, kind: "yes" }]);
+      return [...yes, { id, kind: "no" }];
+    }
+    if (statement.nodeType === "WhileStatement" || statement.nodeType === "DoWhileStatement" || statement.nodeType === "ForStatement" || statement.nodeType === "YulForLoop") {
+      const condition = asAstNode(statement.condition) ?? statement;
+      const id = addNode("decision", labelFor(condition, statement.nodeType === "ForStatement" ? "for loop" : "loop condition"), condition); connect(incoming, id);
+      const body = buildSequence(statements(asAstNode(statement.body)), [{ id, kind: "yes" }]);
+      body.forEach(({ id: source }) => edges.push({ id: `${source}:${id}:loop`, source, target: id, kind: "loop" }));
+      return [{ id, kind: "no" }];
+    }
+    if (statement.nodeType === "Return") { const id = addNode("return", labelFor(statement, "return"), statement); connect(incoming, id); return []; }
+    if (statement.nodeType === "RevertStatement" || isNamedCall(statement, "revert")) { const id = addNode("error", labelFor(statement, "revert"), statement); connect(incoming, id); return []; }
+    if (isNamedCall(statement, "require") || isNamedCall(statement, "assert")) {
+      const id = addNode("decision", labelFor(statement, "validation"), statement); connect(incoming, id);
+      const errorId = addNode("error", isNamedCall(statement, "assert") ? "Assertion fails" : "Requirement fails", statement);
+      edges.push({ id: `${id}:${errorId}:no`, source: id, target: errorId, kind: "no" });
+      return [{ id, kind: "yes" }];
+    }
+    const kind = classifyFlowNode(statement);
+    const id = addNode(kind, labelFor(statement, kind.replaceAll("_", " ")), statement); connect(incoming, id);
+    return [{ id, kind: "next" }];
+  };
+
+  const start = addNode("start", `${fn.name || fn.kind || "function"} starts`, fn);
+  const exits = buildSequence(statements(asAstNode(fn.body)), [{ id: start, kind: "next" }]);
+  if (exits.length) { const end = addNode("return", "Function completes", fn); connect(exits, end); }
+  return parseFunctionFlowchart({ schemaVersion: 1, functionId, nodes, edges });
+}
+
+function classifyFlowNode(statement: AstNode): FlowNodeKind {
+  if (statement.nodeType === "EmitStatement") return "event";
+  if (statement.nodeType === "YulAssignment" || statement.nodeType === "YulVariableDeclaration") return "process";
+  let hasAssignment = false; let hasExternal = false; let hasCall = false;
+  walkAst(statement, (node) => { if (node.nodeType === "Assignment" || node.nodeType === "YulAssignment") hasAssignment = true; if (node.nodeType === "FunctionCall" || node.nodeType === "YulFunctionCall") hasCall = true; if (node.nodeType === "MemberAccess") hasExternal = true; });
+  if (hasAssignment) return "state_write";
+  if (hasExternal && hasCall) return "external_call";
+  if (hasCall) return "call";
+  return "process";
+}
+
+function isNamedCall(statement: AstNode, name: string): boolean {
+  let found = false;
+  walkAst(statement, (node) => {
+    if (node.nodeType === "YulFunctionCall" && asAstNode(node.functionName)?.name === name) found = true;
+    if (node.nodeType !== "FunctionCall") return; const expression = asAstNode(node.expression); if (expression?.name === name || expression?.memberName === name) found = true;
+  });
+  return found;
 }
 
 
@@ -330,6 +430,8 @@ function mapAstNode(ast: AstNode): { kind: GraphNodeKind; label: string; metadat
           visibility: ast.visibility ?? "default",
           mutability: ast.stateMutability ?? "nonpayable",
           payable: ast.stateMutability === "payable",
+          parameters: (ast.parameters?.parameters ?? []).map((parameter) => `${parameter.name || "value"}: ${parameter.typeDescriptions?.typeString ?? "unknown"}`),
+          returns: (ast.returnParameters?.parameters ?? []).map((parameter) => `${parameter.name || "value"}: ${parameter.typeDescriptions?.typeString ?? "unknown"}`),
         },
       };
     case "ModifierDefinition":

@@ -4,10 +4,32 @@ import {
   createStableNodeId,
   GraphValidationError,
   parseGraph,
+  parseExplanationCollection,
+  parseFunctionFlowchart,
   parseWorkEvent,
   serializeGraph,
   type Graph,
 } from "./index.js";
+
+describe("explanation model", () => {
+  it("validates structured grounded explanations", () => {
+    const collection = { schemaVersion: 1, enabled: true, items: [{ schemaVersion: 1, nodeId: "fn", contentHash: "abc", status: "ready", summary: "Deposits funds.", steps: [{ title: "Store", detail: "Updates balance.", evidence: [{ file: "src/Vault.sol", startLine: 2, endLine: 3 }] }] }] };
+    expect(parseExplanationCollection(collection)).toBe(collection);
+  });
+
+  it("rejects malformed evidence", () => {
+    expect(() => parseExplanationCollection({ schemaVersion: 1, enabled: true, items: [{ schemaVersion: 1, nodeId: "fn", contentHash: "abc", status: "ready", steps: [{ title: "Store", detail: "Updates.", evidence: [{ file: "src/Vault.sol", startLine: 4, endLine: 2 }] }] }] })).toThrow(/endLine must be >= startLine/);
+  });
+});
+
+describe("function flowcharts", () => {
+  it("validates branch endpoints and source evidence", () => {
+    const source = { file: "src/Vault.sol", start: { offset: 0, line: 1, column: 1 }, end: { offset: 10, line: 1, column: 11 } };
+    const flow = { schemaVersion: 1, functionId: "withdraw", nodes: [{ id: "decision", kind: "decision", label: "enough balance?", source }, { id: "error", kind: "error", label: "revert", source }], edges: [{ id: "no", source: "decision", target: "error", kind: "no" }] };
+    expect(parseFunctionFlowchart(flow)).toBe(flow);
+    expect(() => parseFunctionFlowchart({ ...flow, edges: [{ ...flow.edges[0], target: "missing" }] })).toThrow(/references missing node/);
+  });
+});
 
 describe("work event model", () => {
   const event = { schemaVersion: 1, id: "event-1", type: "file_edit_completed", timestamp: "2026-08-10T16:00:00.000Z", message: "Updated Vault.sol", targetIds: ["file"], metadata: { path: "src/Vault.sol" } };

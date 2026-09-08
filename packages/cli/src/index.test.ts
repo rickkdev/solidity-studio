@@ -78,6 +78,34 @@ describe("serviceStatus", () => {
 });
 
 describe("codevis watch", () => {
+  it("precomputes validated explanations through an injected provider", async () => {
+    const webRoot = await mkdtemp(path.join(tmpdir(), "codevis-explain-web-"));
+    const cacheRoot = await mkdtemp(path.join(tmpdir(), "codevis-explain-cache-"));
+    await writeFile(path.join(webRoot, "index.html"), "<!doctype html><title>Code Visualizer</title>");
+    const provider = { explain: async (packet: import("./explanation-service.js").ExplanationPacket) => packet.symbols.map((symbol) => ({
+      nodeId: symbol.nodeId, summary: `${symbol.label} summary`, purpose: `${symbol.label} purpose`, inputs: [], outputs: [], stateEffects: [], externalInteractions: [], reverts: [], concepts: ["Solidity"],
+      steps: [{ title: "Read", detail: "Follow the source.", evidence: [{ file: symbol.file, startLine: symbol.startLine, endLine: symbol.startLine }] }],
+    })) };
+    const service = await startWatchServer(fixtureRoot, { port: 0, webRoot, explain: true, explanationProvider: provider, explanationCacheRoot: cacheRoot });
+    try {
+      const deadline = Date.now() + 5_000;
+      let collection: { enabled: boolean; items: { status: string; summary?: string }[] } = { enabled: false, items: [] };
+      while (Date.now() < deadline) {
+        collection = await (await fetch(`${service.url}/api/explanations`)).json() as typeof collection;
+        if (collection.items.length && collection.items.every(({ status }) => status === "ready")) break;
+        await new Promise((resolve) => setTimeout(resolve, 20));
+      }
+      expect(collection.enabled).toBe(true);
+      expect(collection.items).toEqual(expect.arrayContaining([expect.objectContaining({ status: "ready", summary: expect.stringContaining("summary") })]));
+      const unknownRetry = await fetch(`${service.url}/api/explanations/missing/retry`, { method: "POST" });
+      expect(unknownRetry.status).toBe(404);
+    } finally {
+      await service.close();
+      await rm(webRoot, { recursive: true, force: true });
+      await rm(cacheRoot, { recursive: true, force: true });
+    }
+  });
+
   it("serves the visualizer and initial validated graph, then closes cleanly", async () => {
     const webRoot = await mkdtemp(path.join(tmpdir(), "codevis-web-"));
     await writeFile(path.join(webRoot, "index.html"), "<!doctype html><title>Code Visualizer</title>");
@@ -349,6 +377,12 @@ describe("analyzeSolidityStructure", () => {
     const vaultSource = await readFile(`${fixtureRoot}src/Vault.sol`, "utf8");
     expect(Buffer.from(vaultSource).subarray(deposit.source!.start.offset, deposit.source!.end.offset).toString())
       .toContain("function deposit() external payable");
+    const depositFlow = first.flowcharts.find(({ functionId }) => functionId === deposit.id)!;
+    expect(depositFlow.nodes.map(({ kind }) => kind)).toEqual(expect.arrayContaining(["start", "state_write", "event", "return"]));
+    const withdraw = first.nodes.find((node) => node.kind === "function" && node.label === "withdraw")!;
+    const withdrawFlow = first.flowcharts.find(({ functionId }) => functionId === withdraw.id)!;
+    expect(withdrawFlow.nodes.map(({ kind }) => kind)).toEqual(expect.arrayContaining(["decision", "error", "external_call"]));
+    expect(withdrawFlow.edges.map(({ kind }) => kind)).toEqual(expect.arrayContaining(["yes", "no"]));
 
     const nodeById = new Map(first.nodes.map((node) => [node.id, node]));
     const relationships = first.edges.map((edge) => ({

@@ -1,5 +1,122 @@
 export const GRAPH_SCHEMA_VERSION = 1 as const;
 export const WORK_EVENT_SCHEMA_VERSION = 1 as const;
+export const EXPLANATION_SCHEMA_VERSION = 1 as const;
+export const FLOWCHART_SCHEMA_VERSION = 1 as const;
+export const flowNodeKinds = ["start", "process", "decision", "call", "state_read", "state_write", "external_call", "event", "return", "error"] as const;
+export const flowEdgeKinds = ["next", "yes", "no", "success", "failure", "loop"] as const;
+export type FlowNodeKind = (typeof flowNodeKinds)[number];
+export type FlowEdgeKind = (typeof flowEdgeKinds)[number];
+export interface FlowNode { readonly id: string; readonly kind: FlowNodeKind; readonly label: string; readonly source: SourceLocation; }
+export interface FlowEdge { readonly id: string; readonly source: string; readonly target: string; readonly kind: FlowEdgeKind; }
+export interface FunctionFlowchart { readonly schemaVersion: typeof FLOWCHART_SCHEMA_VERSION; readonly functionId: string; readonly nodes: readonly FlowNode[]; readonly edges: readonly FlowEdge[]; }
+
+export function parseFunctionFlowchart(payload: unknown): FunctionFlowchart {
+  const issues: string[] = [];
+  if (!isRecord(payload)) throw new GraphValidationError(["flowchart must be an object"]);
+  if (payload.schemaVersion !== FLOWCHART_SCHEMA_VERSION) issues.push(`schemaVersion must be ${FLOWCHART_SCHEMA_VERSION}`);
+  requireNonEmptyString(payload.functionId, "functionId", issues);
+  const ids = new Set<string>();
+  if (!Array.isArray(payload.nodes)) issues.push("nodes must be an array");
+  else payload.nodes.forEach((node, index) => {
+    if (!isRecord(node)) { issues.push(`nodes[${index}] must be an object`); return; }
+    validateUniqueId(node.id, `nodes[${index}].id`, ids, issues); requireEnum(node.kind, `nodes[${index}].kind`, new Set(flowNodeKinds), issues); requireNonEmptyString(node.label, `nodes[${index}].label`, issues); validateSource(node.source, `nodes[${index}].source`, issues);
+  });
+  const edgeIds = new Set<string>();
+  if (!Array.isArray(payload.edges)) issues.push("edges must be an array");
+  else payload.edges.forEach((edge, index) => {
+    if (!isRecord(edge)) { issues.push(`edges[${index}] must be an object`); return; }
+    validateUniqueId(edge.id, `edges[${index}].id`, edgeIds, issues); requireEnum(edge.kind, `edges[${index}].kind`, new Set(flowEdgeKinds), issues);
+    for (const key of ["source", "target"] as const) if (requireNonEmptyString(edge[key], `edges[${index}].${key}`, issues) && !ids.has(edge[key] as string)) issues.push(`edges[${index}].${key} references missing node '${edge[key]}'`);
+  });
+  if (issues.length) throw new GraphValidationError(issues);
+  return payload as unknown as FunctionFlowchart;
+}
+
+export const explanationStatuses = ["queued", "running", "ready", "stale", "failed", "unavailable"] as const;
+export type ExplanationStatus = (typeof explanationStatuses)[number];
+
+export interface ExplanationEvidence {
+  readonly file: string;
+  readonly startLine: number;
+  readonly endLine: number;
+}
+
+export interface ExplanationStep {
+  readonly title: string;
+  readonly detail: string;
+  readonly evidence: readonly ExplanationEvidence[];
+}
+
+export interface CodeExplanation {
+  readonly schemaVersion: typeof EXPLANATION_SCHEMA_VERSION;
+  readonly nodeId: string;
+  readonly contentHash: string;
+  readonly status: ExplanationStatus;
+  readonly summary?: string;
+  readonly purpose?: string;
+  readonly inputs?: readonly string[];
+  readonly outputs?: readonly string[];
+  readonly steps?: readonly ExplanationStep[];
+  readonly stateEffects?: readonly string[];
+  readonly externalInteractions?: readonly string[];
+  readonly reverts?: readonly string[];
+  readonly concepts?: readonly string[];
+  readonly error?: string;
+}
+
+export interface ExplanationCollection {
+  readonly schemaVersion: typeof EXPLANATION_SCHEMA_VERSION;
+  readonly enabled: boolean;
+  readonly items: readonly CodeExplanation[];
+}
+
+export class ExplanationValidationError extends Error {
+  public constructor(public readonly issues: readonly string[]) {
+    super(`Invalid explanation payload:\n- ${issues.join("\n- ")}`);
+    this.name = "ExplanationValidationError";
+  }
+}
+
+export function parseExplanationCollection(payload: unknown): ExplanationCollection {
+  const issues: string[] = [];
+  if (!isRecord(payload)) throw new ExplanationValidationError(["collection must be an object"]);
+  if (payload.schemaVersion !== EXPLANATION_SCHEMA_VERSION) issues.push(`schemaVersion must be ${EXPLANATION_SCHEMA_VERSION}`);
+  if (typeof payload.enabled !== "boolean") issues.push("enabled must be a boolean");
+  if (!Array.isArray(payload.items)) issues.push("items must be an array");
+  else payload.items.forEach((item, index) => validateExplanation(item, `items[${index}]`, issues));
+  if (issues.length) throw new ExplanationValidationError(issues);
+  return payload as unknown as ExplanationCollection;
+}
+
+function validateExplanation(value: unknown, itemPath: string, issues: string[]): void {
+  if (!isRecord(value)) { issues.push(`${itemPath} must be an object`); return; }
+  if (value.schemaVersion !== EXPLANATION_SCHEMA_VERSION) issues.push(`${itemPath}.schemaVersion must be ${EXPLANATION_SCHEMA_VERSION}`);
+  requireNonEmptyString(value.nodeId, `${itemPath}.nodeId`, issues);
+  requireNonEmptyString(value.contentHash, `${itemPath}.contentHash`, issues);
+  requireEnum(value.status, `${itemPath}.status`, new Set(explanationStatuses), issues);
+  for (const key of ["summary", "purpose", "error"] as const) if (value[key] !== undefined) requireNonEmptyString(value[key], `${itemPath}.${key}`, issues);
+  for (const key of ["inputs", "outputs", "stateEffects", "externalInteractions", "reverts", "concepts"] as const) {
+    if (value[key] !== undefined && (!Array.isArray(value[key]) || !(value[key] as unknown[]).every((entry) => typeof entry === "string" && entry.length > 0))) issues.push(`${itemPath}.${key} must be an array of non-empty strings`);
+  }
+  if (value.steps !== undefined) {
+    if (!Array.isArray(value.steps)) issues.push(`${itemPath}.steps must be an array`);
+    else value.steps.forEach((step, index) => validateStep(step, `${itemPath}.steps[${index}]`, issues));
+  }
+}
+
+function validateStep(value: unknown, stepPath: string, issues: string[]): void {
+  if (!isRecord(value)) { issues.push(`${stepPath} must be an object`); return; }
+  requireNonEmptyString(value.title, `${stepPath}.title`, issues);
+  requireNonEmptyString(value.detail, `${stepPath}.detail`, issues);
+  if (!Array.isArray(value.evidence)) issues.push(`${stepPath}.evidence must be an array`);
+  else value.evidence.forEach((evidence, index) => {
+    const evidencePath = `${stepPath}.evidence[${index}]`;
+    if (!isRecord(evidence)) { issues.push(`${evidencePath} must be an object`); return; }
+    requireNonEmptyString(evidence.file, `${evidencePath}.file`, issues);
+    if (!Number.isInteger(evidence.startLine) || (evidence.startLine as number) < 1) issues.push(`${evidencePath}.startLine must be an integer >= 1`);
+    if (!Number.isInteger(evidence.endLine) || (evidence.endLine as number) < (Number(evidence.startLine) || 1)) issues.push(`${evidencePath}.endLine must be >= startLine`);
+  });
+}
 
 export const workEventTypes = [
   "plan_created", "step_started", "file_read", "file_edit_started", "file_edit_completed",
@@ -331,3 +448,5 @@ function isPosition(value: unknown): value is SourcePosition {
     Number.isInteger(value.column)
   );
 }
+export * from "./studio.js";
+export * from "./studio-token-factory.js";

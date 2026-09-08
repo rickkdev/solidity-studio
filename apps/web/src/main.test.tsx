@@ -28,12 +28,28 @@ const graph = {
 };
 
 afterEach(() => { cleanup(); });
+const explanationsOff = { schemaVersion: 1, enabled: false, items: [] };
+async function openFullGraph() { fireEvent.click(await screen.findByRole("tab", { name: "Full graph" })); }
 
 describe("repository graph", () => {
+  it("guides newcomers through a grounded Codex function explanation", async () => {
+    const explanation = { schemaVersion: 1, enabled: true, items: [{ schemaVersion: 1, nodeId: "fn", contentHash: "hash", status: "ready", summary: "Accepts funds into the vault.", purpose: "This entrypoint records a deposit.", inputs: ["Native currency sent with the transaction"], outputs: [], steps: [{ title: "Receive funds", detail: "The payable function accepts value.", evidence: [{ file: "src/Vault.sol", startLine: 2, endLine: 2 }] }], stateEffects: [], externalInteractions: [], reverts: [], concepts: ["payable"] }] };
+    const flow = { schemaVersion: 1, functionId: "fn", nodes: [{ id: "start", kind: "start", label: "deposit starts", source: graph.nodes[3]!.source }, { id: "end", kind: "return", label: "Function completes", source: graph.nodes[3]!.source }], edges: [{ id: "next", source: "start", target: "end", kind: "next" }] };
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => graph }).mockResolvedValueOnce({ ok: true, json: async () => explanation }).mockResolvedValueOnce({ ok: true, json: async () => ({ accepted: true }) }).mockResolvedValueOnce({ ok: true, json: async () => flow });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+    expect(await screen.findByLabelText("Guided explorer for fixture")).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /depositexternal/i }));
+    expect(await screen.findByText("Accepts funds into the vault.")).toBeInTheDocument();
+    expect(await screen.findByLabelText("Programming flowchart")).toBeInTheDocument();
+    expect(screen.getByText("deposit starts")).toBeInTheDocument();
+  });
+
   it("loads and renders fixture nodes, directed relationship styles, and viewport actions", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
     render(<App />);
     expect(screen.getByText("Mapping repository…")).toBeInTheDocument();
+    await openFullGraph();
     expect(await screen.findByLabelText("Repository graph for fixture")).toBeInTheDocument();
     for (const label of ["Vault.sol", "Vault", "onlyOwner", "Deposited", "testDeposit", "Review call"]) {
       expect(screen.getByText(label)).toBeInTheDocument();
@@ -47,9 +63,10 @@ describe("repository graph", () => {
   });
 
   it("starts Foundry tests from the graph", async () => {
-    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => graph }).mockResolvedValueOnce({ ok: true, status: 200 });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => graph }).mockResolvedValueOnce({ ok: true, json: async () => explanationsOff }).mockResolvedValueOnce({ ok: true, status: 200 });
     vi.stubGlobal("fetch", fetchMock);
     render(<App />);
+    await openFullGraph();
     await screen.findByLabelText("Repository graph for fixture");
     fireEvent.click(screen.getByRole("button", { name: "Run Foundry tests" }));
     await waitFor(() => expect(fetchMock).toHaveBeenCalledWith("/api/tests", expect.objectContaining({ method: "POST" })));
@@ -57,9 +74,10 @@ describe("repository graph", () => {
 
   it("offers recovery for missing Foundry and compiler errors", async () => {
     const brokenGraph = { ...graph, metadata: { ...graph.metadata, diagnostics: [{ severity: "error", message: "ParserError" }] } };
-    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => brokenGraph }).mockResolvedValueOnce({ ok: false, status: 400 });
+    const fetchMock = vi.fn().mockResolvedValueOnce({ ok: true, json: async () => brokenGraph }).mockResolvedValueOnce({ ok: true, json: async () => explanationsOff }).mockResolvedValueOnce({ ok: false, status: 400 });
     vi.stubGlobal("fetch", fetchMock);
     render(<App />);
+    await openFullGraph();
     expect(await screen.findByText(/Compiler errors detected/)).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry now" })).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "Run Foundry tests" }));
@@ -70,6 +88,7 @@ describe("repository graph", () => {
   it("expands and collapses groups without leaving edges connected to hidden nodes", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
     render(<App />);
+    await openFullGraph();
     await screen.findByText("Vault");
 
     fireEvent.click(screen.getByLabelText("Expand Vault"));
@@ -92,6 +111,7 @@ describe("repository graph", () => {
     Object.defineProperty(navigator, "clipboard", { configurable: true, value: { writeText } });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
     render(<App />);
+    await openFullGraph();
     await screen.findByText("Vault");
     fireEvent.click(screen.getByLabelText("Expand Vault"));
     fireEvent.click(screen.getByText("deposit"));
@@ -109,6 +129,7 @@ describe("repository graph", () => {
   it("explains when a selected node has no source location", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
     render(<App />);
+    await openFullGraph();
     fireEvent.click(await screen.findByText("Review call"));
     expect(screen.getByLabelText("Details for Review call")).toHaveTextContent("This node was generated without a source location.");
   });
@@ -116,6 +137,7 @@ describe("repository graph", () => {
   it("searches labels and paths, reveals hidden ancestors, selects, and focuses a result", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
     render(<App />);
+    await openFullGraph();
     await screen.findByText("Vault");
     fireEvent.change(screen.getByLabelText("Find symbol or path"), { target: { value: "SRC/VAULT" } });
     expect(screen.getByLabelText("Search results")).toHaveTextContent("deposit");
@@ -127,6 +149,7 @@ describe("repository graph", () => {
   it("toggles node and edge kinds independently and clears filters", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
     render(<App />);
+    await openFullGraph();
     await screen.findByText("Vault");
     fireEvent.click(screen.getByText("Node kinds"));
     fireEvent.click(screen.getByLabelText("finding"));
@@ -142,6 +165,7 @@ describe("repository graph", () => {
   it("applies and resets the security evidence preset", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graph }));
     render(<App />);
+    await openFullGraph();
     await screen.findByText("Vault");
     fireEvent.click(screen.getByRole("button", { name: "Security evidence" }));
     expect(screen.getByText("deposit")).toBeInTheDocument();
@@ -159,6 +183,7 @@ describe("repository graph", () => {
     ] } };
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => graphWithEvents }));
     render(<App />);
+    await openFullGraph();
     const timeline = await screen.findByLabelText("Work timeline");
     expect(timeline).toHaveTextContent("step startedInspecting vault");
     expect(timeline.textContent?.indexOf("Inspecting vault")).toBeLessThan(timeline.textContent?.indexOf("Deposit updated") ?? 0);

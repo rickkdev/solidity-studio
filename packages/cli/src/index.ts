@@ -28,6 +28,7 @@ export {
   type WatchServer,
   type WatchServerOptions,
 } from "./watch-server.js";
+export { buildPacket, CodexExplanationProvider, createExplanationManager, type ExplanationManager, type ExplanationPacket, type ExplanationProvider, type GeneratedExplanation } from "./explanation-service.js";
 
 export function serviceStatus(): string {
   const graph = createEmptyGraph("Code Visualizer");
