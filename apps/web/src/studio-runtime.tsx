@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { StudioAbiInput, StudioContract, StudioFunction, StudioProgram, StudioRunResult, StudioTraceStep } from "@codevis/shared";
 import "./studio-runtime.css";
+const PUBLIC_DEMO = import.meta.env.VITE_PUBLIC_DEMO === "true";
 const TEST_ACCOUNTS = ["0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266", "0x70997970C51812dc3A010C7d01b50e0d17dc79C8", "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"];
 const ACCOUNT_TWO = "0x70997970C51812dc3A010C7d01b50e0d17dc79C8";
 function defaultValue(input: StudioAbiInput): string { if (input.type.includes("[")) return "[]"; if (input.type.startsWith("tuple")) return JSON.stringify(input.components?.map(defaultValue) ?? []); if (input.type === "address") return ACCOUNT_TWO; if (input.type === "bool") return "false"; if (/^u?int/.test(input.type)) return "0"; if (/^bytes/.test(input.type)) return input.type === "bytes" ? "0x" : "0x" + "00".repeat(Number(input.type.slice(5))); return ""; }
@@ -41,7 +42,7 @@ export function useStudioRuntime({ sources, program, contract, fn, disabled, onS
   }, [playing, index, current, speed]);
 
   async function run() {
-    if (!sources || !contract || !fn || !callable || disabled || busy || playing || inFlight.current || callable.disabledReason) return;
+    if (PUBLIC_DEMO || !sources || !contract || !fn || !callable || disabled || busy || playing || inFlight.current || callable.disabledReason) return;
     inFlight.current = true;
     const requestScope = scope; setBusy(true); setError(""); setIndex(-1);
     try {
@@ -66,14 +67,14 @@ export function useStudioRuntime({ sources, program, contract, fn, disabled, onS
       sessionRef.current = ""; setSessionId(""); setHistory([]); setError(""); setNotice("Sandbox reset. Next Run creates a fresh deployment.");
     } catch (e) { setError(e instanceof Error ? e.message : "Reset failed."); }
   }
-  const canRun = !!callable && !callable.disabledReason && !disabled && !busy && !playing && !(callable.kind === "constructor" && !!current?.contractAddress);
+  const canRun = !PUBLIC_DEMO && !!callable && !callable.disabledReason && !disabled && !busy && !playing && !(callable.kind === "constructor" && !!current?.contractAddress);
   function inputField(input: StudioAbiInput, i: number, text: string, onChange: (text: string) => void, constructor = false) {
     const name = input.name || `input ${i + 1}`;
     return <label className="runtime-input" key={`${constructor ? "constructor" : "fn"}:${i}`}><span>{constructor ? "Constructor " : ""}{name}<small>{input.type}</small></span>{input.type === "bool" ? <select aria-label={`${constructor ? "Constructor" : "Run"} ${name}`} value={text} onChange={e => onChange(e.target.value)} disabled={busy || playing}><option value="false">false</option><option value="true">true</option></select> : <input list={input.type === "address" ? "runtime-test-accounts" : undefined} aria-label={`${constructor ? "Constructor" : "Run"} ${name}`} value={text} onChange={e => onChange(e.target.value)} disabled={busy || playing} spellCheck={false} placeholder={input.type.includes("[") || input.type.startsWith("tuple") ? "JSON; quote large integers" : input.type} />}</label>;
   }
   const controls: ReactNode = callable && fn ? <div className="runtime-node-controls nodrag nopan nowheel" onClick={event => event.stopPropagation()}>
     <datalist id="runtime-test-accounts">{(current?.accounts ?? TEST_ACCOUNTS).map((address, i) => <option key={address} value={address}>Account {i + 1}{i === 0 ? " (deployer)" : ""}</option>)}</datalist><div className="runtime-node-title">LOCAL FUNCTION INPUTS</div>
-    {callable.disabledReason ? <p>{callable.disabledReason}</p> : <>
+    {PUBLIC_DEMO ? <p>Run functions and replay traces in the local version. <a href="https://github.com/rickkdev/solidity-studio#development">Setup instructions</a></p> : callable.disabledReason ? <p>{callable.disabledReason}</p> : <>
       {callable.inputs.map((input, i) => inputField(input, i, args[i] ?? "", text => setValues(previous => ({ ...previous, [fn.id]: args.map((v, index) => index === i ? text : v) }))))}
       {callable.kind !== "constructor" && <label className="runtime-input"><span>Caller <small>msg.sender</small></span><select aria-label="Run caller" value={caller} onChange={e => setCaller(Number(e.target.value))} disabled={busy || playing}>{[0, 1, 2].map(i => <option key={i} value={i}>Account {i + 1}{i === 0 ? " · deployer" : ""}{current?.accounts[i] ? ` · ${current.accounts[i]!.slice(0, 8)}…` : ""}</option>)}</select></label>}
       {callable.mutability === "payable" && <label className="runtime-input"><span>ETH value <small>wei</small></span><input aria-label="Run ETH value" value={value} onChange={e => setValue(e.target.value)} disabled={busy || playing} /></label>}
@@ -84,7 +85,7 @@ export function useStudioRuntime({ sources, program, contract, fn, disabled, onS
       {callable.kind === "constructor" && sessionId && <small className="runtime-hint">Reset the sandbox to run the constructor again.</small>}
     </>}
   </div> : null;
-  const consolePanel = <section className="studio-runtime-console" aria-label="Execution console"><header><strong>EXECUTION CONSOLE</strong><button disabled={busy || (!sessionId && !error)} onClick={() => void reset()}>Reset sandbox</button></header><p className="runtime-notice">{notice}</p>
+  const consolePanel = <section className="studio-runtime-console" aria-label="Execution console"><header><strong>EXECUTION CONSOLE</strong><button disabled={busy || (!sessionId && !error)} onClick={() => void reset()}>Reset sandbox</button></header><p className="runtime-notice">{PUBLIC_DEMO ? "Code conversion and editing run in your browser. Execution requires the local Studio server and Anvil." : notice}</p>
     {error && <p className="runtime-error" role="alert">{error}</p>}
     {busy && <p role="status">Executing in the local EVM…</p>}
     {current && <div className="runtime-replay"><span>Trace replay {Math.max(0, index + 1)}/{current.steps.length}</span><button disabled={!current.steps.length || busy} onClick={() => { if (!playing && index >= current.steps.length - 1) setIndex(0); setPlaying(p => !p); }}>{playing ? "Pause replay" : "Replay trace"}</button><button disabled={busy || index >= current.steps.length - 1} onClick={() => { setPlaying(false); setIndex(i => i + 1); }}>Step</button>{playing && <button onClick={() => { setPlaying(false); setIndex(current.steps.length - 1); }}>Finish replay</button>}<select aria-label="Replay speed" value={speed} onChange={e => setSpeed(Number(e.target.value))}><option value={1800}>Slow</option><option value={1000}>Normal</option><option value={600}>Fast</option></select></div>}

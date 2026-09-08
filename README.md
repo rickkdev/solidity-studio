@@ -2,6 +2,12 @@
 
 Solidity Studio is a two-way visual Solidity editor: turn contracts into Blueprint-style nodes, edit their logic, and export compiling Solidity. The repository also retains the existing local repository explorer and Foundry tooling.
 
+## Public website
+
+[Open Solidity Studio](https://rickkdev.github.io/solidity-studio/). The public edition compiles Solidity inside a browser worker, supports code/node editing and workspace export, and does not upload your source to a compiler server. The compiler is downloaded from this site on first conversion. Running functions and replaying EVM traces require the local version below.
+
+Pushes to `main` build and deploy the website through `.github/workflows/pages.yml`. For a matching local production preview, run `VITE_PUBLIC_DEMO=true npm run build --workspace @codevis/web` after building shared, then `VITE_PUBLIC_DEMO=true npm run preview --workspace @codevis/web -- --port 4290` and open `/solidity-studio/`.
+
 ## Prerequisites
 
 - Node.js 20 or newer

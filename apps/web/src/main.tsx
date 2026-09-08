@@ -96,6 +96,7 @@ const root = document.getElementById("root");
 function WorkspaceRoot() {
   const [mode, setMode] = useState<"studio" | "repository" | null>(null);
   useEffect(() => {
+    if (import.meta.env.VITE_PUBLIC_DEMO === "true") { setMode("studio"); return; }
     const controller = new AbortController();
     void fetch("/api/studio/status", { signal: controller.signal }).then(r => r.ok ? r.json() : null).then(data => setMode(data?.studio ? "studio" : "repository")).catch(() => { if (!controller.signal.aborted) setMode("studio"); });
     return () => controller.abort();

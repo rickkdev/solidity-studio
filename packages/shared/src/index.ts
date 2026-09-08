@@ -450,3 +450,4 @@ function isPosition(value: unknown): value is SourcePosition {
 }
 export * from "./studio.js";
 export * from "./studio-token-factory.js";
+export { createStudioCompiler } from "./studio-compiler.js";

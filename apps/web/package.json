@@ -18,6 +18,7 @@
     "@xyflow/react": "^12.11.2",
     "react": "^19.1.1",
     "react-dom": "^19.1.1",
+    "solc": "^0.8.36",
     "vite": "^7.1.1"
   },
   "devDependencies": {
